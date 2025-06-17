@@ -1,0 +1,12 @@
+Car_Detector.pt
+yolo_car_detector.pt
+yolov8x.pt
+Validation/data
+Training/data
+Training/output_images
+Training/raw
+Training/runs
+Training/yolo11n.pt
+Training/yolov8s.pt
+.venv
+.idea/
