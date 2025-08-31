@@ -10,7 +10,7 @@ import win32gui
 
 # Initialize variables
 totalObjects = 5  # Total objects to detect before saving the image
-model_path = "../yolov8x.pt"  # Path to YOLO model
+model_path = "../Models/yolov8x.pt"  # Path to YOLO model
 model = YOLO(model_path)
 output_image_folder = "output_images"  # Folder to save output images and labels
 classToDetect = ['truck', 'car']  # Classes to detect

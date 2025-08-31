@@ -122,7 +122,7 @@ def displayDetectionDatasetSamples(dataFolder, annotationType="YOLO", imagesToDi
 
 # Main execution
 if __name__ == "__main__":
-    displayDetectionDatasetSamples(dataFolder="output_images",
+    displayDetectionDatasetSamples(dataFolder="raw",
                                    annotationType="YOLO",
                                    imagesToDisplay=None,
                                    scale=0.5, imagesPerCol=4,

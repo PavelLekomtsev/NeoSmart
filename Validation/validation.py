@@ -440,7 +440,7 @@ def main():
     model2_path = "../yolo_car_detector.pt"
 
     # Path to validate data
-    validation_data_path = "data/valid"
+    validation_data_path = "data2/valid"
 
     # Existing check
     if not os.path.exists(model1_path):
