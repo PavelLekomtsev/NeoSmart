@@ -436,7 +436,7 @@ def main():
     """Основная функция для запуска сравнения"""
 
     # Models paths
-    model1_path = "../Car_Detector.pt"
+    model1_path = "../Models/Car_Detector.pt"
     model2_path = "../yolo_car_detector.pt"
 
     # Path to validate data

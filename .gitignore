@@ -1,4 +1,4 @@
-Car_Detector.pt
+Models/Car_Detector.pt
 yolo_car_detector.pt
 Models/yolov8x.pt
 Validation/data
@@ -9,6 +9,8 @@ Training/raw
 Training/runs
 Training/yolo11n.pt
 Training/yolov8s.pt
+Validation/data
+Validation/data2
 .venv
 .idea/
 .idea/

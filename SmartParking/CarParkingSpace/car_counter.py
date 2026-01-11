@@ -9,7 +9,7 @@ import win32gui
 from ultralytics import YOLO
 
 # ------------ Variables --------------
-model_path = "../../Car_Detector.pt"
+model_path = "../../Models/Car_Detector.pt"
 confidence = 0.8
 class_names = ["car"]
 ALL_PARKING_SPACES_NUMBER = 12
@@ -19,6 +19,10 @@ model = YOLO(model_path)
 
 # Global variable to store the HWND of OpenCV window
 opencv_window_hwnd = None
+
+# Глобальные переменные для отслеживания состояния окна
+last_found_window_title = ""
+window_found_before = False
 
 
 def find_unreal_window(opencv_window_hwnd=None):
@@ -38,6 +42,7 @@ def find_unreal_window(opencv_window_hwnd=None):
             }
             Returns None if no matching window is found.
     """
+    global last_found_window_title, window_found_before
 
     def enum_windows_callback(hwnd, windows):
         if win32gui.IsWindowVisible(hwnd):
@@ -53,9 +58,9 @@ def find_unreal_window(opencv_window_hwnd=None):
 
             # Include only Unreal Engine windows
             if ("Unreal Editor" in window_title or
-                "UE5" in window_title or
-                "UnrealEditor" in window_title or
-                window_title.endswith(" - Unreal Editor")):
+                    "UE5" in window_title or
+                    "UnrealEditor" in window_title or
+                    window_title.endswith(" - Unreal Editor")):
                 windows.append((hwnd, window_title))
         return True
 
@@ -65,7 +70,13 @@ def find_unreal_window(opencv_window_hwnd=None):
     if windows:
         # Use the first matching Unreal Engine window
         hwnd, title = windows[0]
-        print(f"Found Unreal Engine window: {title}")
+
+        # Логируем только при первом обнаружении или смене названия окна
+        if not window_found_before or last_found_window_title != title:
+            print(f"Found Unreal Engine window: {title}")
+            last_found_window_title = title
+            window_found_before = True
+
         rect = win32gui.GetWindowRect(hwnd)
 
         # Estimate border and title bar size
@@ -78,6 +89,12 @@ def find_unreal_window(opencv_window_hwnd=None):
             "width": rect[2] - rect[0] - (border_width * 2),
             "height": rect[3] - rect[1] - title_height - border_width
         }
+    else:
+        # Логируем потерю окна только если оно было найдено ранее
+        if window_found_before:
+            print("Unreal Engine window lost")
+            window_found_before = False
+            last_found_window_title = ""
 
     return None
 
