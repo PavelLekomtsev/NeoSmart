@@ -1,18 +1,22 @@
-# Import necessary libraries
 import math
 import cv2
 import cvzone
-import mss
+from ultralytics import YOLO
+import pickle
 import numpy as np
+import mss
 import win32gui
 
-from ultralytics import YOLO
-
-# ------------ Variables --------------
+# --------------- Variables -------------------
 model_path = "../../Models/Car_Detector.pt"
 confidence = 0.8
 class_names = ["car"]
-ALL_PARKING_SPACES_NUMBER = 12
+polygon_file_path = 'polygons.p'
+
+# Load previously defined Regions of Interest (ROIs) polygons from a file
+file_obj = open(polygon_file_path, 'rb')
+rois = pickle.load(file_obj)
+file_obj.close()
 
 # Load the YOLO model
 model = YOLO(model_path)
@@ -22,7 +26,6 @@ opencv_window_hwnd = None
 
 last_found_window_title = ""
 window_found_before = False
-
 
 def find_unreal_window(opencv_window_hwnd=None):
     """
@@ -52,7 +55,7 @@ def find_unreal_window(opencv_window_hwnd=None):
                 return True
 
             # Skip windows related to our application
-            if "Object Detection" in window_title or "Detection" in window_title:
+            if "Parking Detection" in window_title or "Detection" in window_title:
                 return True
 
             # Include only Unreal Engine windows
@@ -95,7 +98,6 @@ def find_unreal_window(opencv_window_hwnd=None):
 
     return None
 
-
 def capture_unreal_window(opencv_window_hwnd=None):
     """
     Capture a screenshot of the Unreal Engine window.
@@ -126,21 +128,21 @@ def capture_unreal_window(opencv_window_hwnd=None):
         print(f"Error capturing window: {e}")
         return None
 
-
+# Function to get a list of objects detected by YOLO in an image
 def get_object_list_yolo(_model, _img, _class_names, _confidence=0.5, draw=True):
     """
-    Detect objects in the image using YOLO and draw bounding boxes
+        Detect objects using YOLO model.
 
-    Parameters:
-        - _model: YOLO model for object detection
-        - _img: Input image for object detection
-        - _class_names: List of class names to detect
-        - _confidence: Confidence level for object detection
-        - draw: Draw bounding boxes on image
+        Parameters:
+        - _model: YOLO model for object detection.
+        - _img: Input image for object detection.
+        - _class_names: List of class names to detect.
+        - _confidence: Confidence threshold for object detection.
+        - draw: Whether to draw bounding boxes on the image.
 
-    Returns:
+        Returns:
         - _object_list: List of dictionaries containing information about detected objects.
-    """
+        """
     # Run YOLO on the input image
     _results = _model(_img, stream=False, verbose=False)
     _object_list = []
@@ -171,9 +173,42 @@ def get_object_list_yolo(_model, _img, _class_names, _confidence=0.5, draw=True)
                                        (max(0, x1), max(35, y1)), scale=1, thickness=1)
     return _object_list
 
+# Function to overlay polygons on the image based on the occupancy status
+def overlay_polygons(_image, _object_list, _parking_spaces, _draw_occupied=False):
+    """
+    Overlay polygons on the image and return the count of occupied spaces.
+    
+    Returns:
+        int: Number of occupied parking spaces
+    """
+    overlay = _image.copy()
+    occupied_count = 0
+
+    for parking_space in _parking_spaces:
+        is_empty = True
+
+        # Convert polygon to numpy array and reshape
+        parking_space_array = np.array(parking_space, np.int32).reshape((-1, 1, 2))
+
+        # Check if any car is present in this polygon
+        for obj in _object_list:
+            car_center = obj["center"]
+            result = cv2.pointPolygonTest(parking_space_array, car_center, False)
+            if result >= 0:
+                is_empty = False
+                occupied_count += 1
+                break
+
+        if is_empty:
+            cv2.fillPoly(overlay, [parking_space_array], (0, 255, 0))  # Green for empty space
+        if not is_empty and _draw_occupied:
+            cv2.fillPoly(overlay, [parking_space_array], (0, 0, 255))  # Red for occupied space
+
+    cv2.addWeighted(overlay, 0.35, _image, 0.65, 0, _image)
+    return occupied_count
 
 # Create the unique-name-window
-window_name = "AI Object Detection - UE5"
+window_name = "AI Parking Detection - UE5"
 cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
 
 # Receive HWND OpenCV HWND window to delete it from search
@@ -194,38 +229,35 @@ try:
 
         win32gui.EnumWindows(enum_callback, None)
 
-
     find_opencv_window()
 except:
     pass
 
-print("Starting object detection for Unreal Engine 5...")
+print("Starting parking detection for Unreal Engine 5...")
 print("Press 'q' to quit or close the window")
 
 # Main loop
-frame_count = 0
 while True:
-    img = capture_unreal_window()
+    img = capture_unreal_window(opencv_window_hwnd)
 
     if img is not None:
-        object_list = get_object_list_yolo(model, img, class_names, confidence, draw=True)
+        object_list = get_object_list_yolo(model, img, class_names, confidence)
 
-        # Calculate available parking spaces
-        available_spaces = ALL_PARKING_SPACES_NUMBER - len(object_list)
+        # Overlay polygons and get the count of occupied spaces
+        occupied_spaces = overlay_polygons(img, object_list, rois, _draw_occupied=True)
 
-        # Set color based on the availability of parking spaces
+        # Calculate available parking spaces correctly
+        total_spaces = 12
+        available_spaces = total_spaces - occupied_spaces
+        
         if available_spaces == 0:
-            color = (0, 0, 255)
+            color = (0, 0, 255)  # Red for no available spaces
         else:
-            color = (0, 200, 0)
+            color = (0, 200, 0)  # Green for available spaces
 
-        # Help information about number of found objects
-        info_text = f"Available: {available_spaces}/{ALL_PARKING_SPACES_NUMBER}"
-        cv2.putText(img, info_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-        #cvzone.putTextRect(img, info_text, (10, 30), colorR=color, fontScale=0.7, thickness=2)
+        cvzone.putTextRect(img, f"Available: {available_spaces}/{total_spaces}", (20, 50), colorR=color)
 
         cv2.imshow(window_name, img)
-        frame_count += 1
     else:
         # Display a message if capture fails
         blank_img = np.zeros((480, 640, 3), dtype=np.uint8)
@@ -243,4 +275,4 @@ while True:
         break
 
 cv2.destroyAllWindows()
-print("Object detection stopped.")
+print("Parking detection stopped.")
