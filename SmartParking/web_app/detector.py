@@ -238,26 +238,11 @@ class ParkingDetector:
         if self.mode == self.MODE_PARKING_SPACES:
             occupied = self.overlay_parking_spaces(img, object_list)
             available = self.total_spaces - occupied
-
-            if available == 0:
-                color = (0, 0, 255)  # Red
-            else:
-                color = (0, 200, 0)  # Green
-
-            cvzone.putTextRect(img, f"Available: {available}/{self.total_spaces}",
-                              (20, 50), colorR=color)
         else:
             available = self.total_spaces - cars_detected
             occupied = cars_detected
-
             if available <= 0:
-                color = (0, 0, 255)
                 available = 0
-            else:
-                color = (0, 200, 0)
-
-            cv2.putText(img, f"Available: {available}/{self.total_spaces}",
-                       (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
 
         self.last_stats = {
             "total_spaces": self.total_spaces,
@@ -281,9 +266,9 @@ def create_placeholder_image(message: str = "Waiting for Unreal Engine...") -> n
     for i in range(480):
         img[i, :] = [int(20 + i * 0.05), int(20 + i * 0.03), int(30 + i * 0.02)]
 
-    cv2.putText(img, message, (50, 200),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
-    cv2.putText(img, "Make sure UE5 is running and visible", (50, 240),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 1)
+    cv2.putText(img, message, (50, 210),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 255), 1)
+    cv2.putText(img, "Make sure UE5 is running", (50, 245),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
 
     return img
