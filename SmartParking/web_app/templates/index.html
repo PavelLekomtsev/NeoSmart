@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Parking Monitor</title>
+    <link rel="stylesheet" href="/static/css/styles.css?v=4">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-left">
+                <div class="logo">
+                    <span class="logo-icon">P</span>
+                    <span class="logo-text">Smart Parking Monitor</span>
+                </div>
+            </div>
+            <div class="header-right">
+                <div class="mode-selector">
+                    <label for="mode-select">Mode:</label>
+                    <select id="mode-select">
+                        <option value="parking_spaces">Parking Spaces</option>
+                        <option value="car_counter">Car Counter</option>
+                    </select>
+                </div>
+                <div class="connection-status" id="connection-status">
+                    <span class="status-dot"></span>
+                    <span class="status-text">Connecting...</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Camera 1 -->
+            <section class="camera-section">
+                <div class="camera-section-header">
+                    <h2>Camera 1</h2>
+                    <span class="camera-status" id="camera1-status">Offline</span>
+                </div>
+                <div class="video-grid">
+                    <div class="video-card">
+                        <div class="video-header">
+                            <h3>Unreal Engine Stream</h3>
+                            <span class="badge badge-blue">Original</span>
+                        </div>
+                        <div class="video-container">
+                            <canvas id="camera1-original-canvas"></canvas>
+                            <button class="fullscreen-btn" data-canvas="camera1-original-canvas" title="Fullscreen">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/>
+                                </svg>
+                            </button>
+                            <div class="video-overlay" id="camera1-original-overlay">
+                                <div class="loader"></div>
+                                <p>Waiting for stream...</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="video-card">
+                        <div class="video-header">
+                            <h3>AI Detection Result</h3>
+                            <span class="badge badge-green">Processed</span>
+                        </div>
+                        <div class="video-container">
+                            <canvas id="camera1-processed-canvas"></canvas>
+                            <button class="fullscreen-btn" data-canvas="camera1-processed-canvas" title="Fullscreen">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/>
+                                </svg>
+                            </button>
+                            <div class="video-overlay" id="camera1-processed-overlay">
+                                <div class="loader"></div>
+                                <p>Waiting for stream...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="camera-stats-panel">
+                    <div class="camera-stat-card">
+                        <div class="camera-stat-icon available-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                        </div>
+                        <div class="camera-stat-info">
+                            <span class="camera-stat-label">Available</span>
+                            <span class="camera-stat-value" id="camera1-available">-</span>
+                        </div>
+                    </div>
+                    <div class="camera-stat-card">
+                        <div class="camera-stat-icon occupied-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                        </div>
+                        <div class="camera-stat-info">
+                            <span class="camera-stat-label">Occupied</span>
+                            <span class="camera-stat-value" id="camera1-occupied">-</span>
+                        </div>
+                    </div>
+                    <div class="camera-stat-card">
+                        <div class="camera-stat-icon cars-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M8 17h.01M16 17h.01M7 10h10M5 17l1-7h12l1 7M5 17H4a1 1 0 01-1-1v-1a1 1 0 011-1h1m16 3h1a1 1 0 001-1v-1a1 1 0 00-1-1h-1"/>
+                            </svg>
+                        </div>
+                        <div class="camera-stat-info">
+                            <span class="camera-stat-label">Cars</span>
+                            <span class="camera-stat-value" id="camera1-cars">-</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Camera 2 -->
+            <section class="camera-section">
+                <div class="camera-section-header">
+                    <h2>Camera 2</h2>
+                    <span class="camera-status" id="camera2-status">Offline</span>
+                </div>
+                <div class="video-grid">
+                    <div class="video-card">
+                        <div class="video-header">
+                            <h3>Unreal Engine Stream</h3>
+                            <span class="badge badge-blue">Original</span>
+                        </div>
+                        <div class="video-container">
+                            <canvas id="camera2-original-canvas"></canvas>
+                            <button class="fullscreen-btn" data-canvas="camera2-original-canvas" title="Fullscreen">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/>
+                                </svg>
+                            </button>
+                            <div class="video-overlay" id="camera2-original-overlay">
+                                <div class="loader"></div>
+                                <p>Waiting for stream...</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="video-card">
+                        <div class="video-header">
+                            <h3>AI Detection Result</h3>
+                            <span class="badge badge-green">Processed</span>
+                        </div>
+                        <div class="video-container">
+                            <canvas id="camera2-processed-canvas"></canvas>
+                            <button class="fullscreen-btn" data-canvas="camera2-processed-canvas" title="Fullscreen">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/>
+                                </svg>
+                            </button>
+                            <div class="video-overlay" id="camera2-processed-overlay">
+                                <div class="loader"></div>
+                                <p>Waiting for stream...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="camera-stats-panel">
+                    <div class="camera-stat-card">
+                        <div class="camera-stat-icon available-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                        </div>
+                        <div class="camera-stat-info">
+                            <span class="camera-stat-label">Available</span>
+                            <span class="camera-stat-value" id="camera2-available">-</span>
+                        </div>
+                    </div>
+                    <div class="camera-stat-card">
+                        <div class="camera-stat-icon occupied-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                        </div>
+                        <div class="camera-stat-info">
+                            <span class="camera-stat-label">Occupied</span>
+                            <span class="camera-stat-value" id="camera2-occupied">-</span>
+                        </div>
+                    </div>
+                    <div class="camera-stat-card">
+                        <div class="camera-stat-icon cars-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M8 17h.01M16 17h.01M7 10h10M5 17l1-7h12l1 7M5 17H4a1 1 0 01-1-1v-1a1 1 0 011-1h1m16 3h1a1 1 0 001-1v-1a1 1 0 00-1-1h-1"/>
+                            </svg>
+                        </div>
+                        <div class="camera-stat-info">
+                            <span class="camera-stat-label">Cars</span>
+                            <span class="camera-stat-value" id="camera2-cars">-</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Aggregate Statistics Panel -->
+            <div class="stats-panel">
+                <div class="stat-card">
+                    <div class="stat-icon available-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                    </div>
+                    <div class="stat-info">
+                        <span class="stat-label">Total Available</span>
+                        <span class="stat-value" id="available-count">-</span>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon occupied-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                    </div>
+                    <div class="stat-info">
+                        <span class="stat-label">Total Occupied</span>
+                        <span class="stat-value" id="occupied-count">-</span>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon total-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                        </svg>
+                    </div>
+                    <div class="stat-info">
+                        <span class="stat-label">Total Spaces</span>
+                        <span class="stat-value" id="total-count">-</span>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon cars-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M8 17h.01M16 17h.01M7 10h10M5 17l1-7h12l1 7M5 17H4a1 1 0 01-1-1v-1a1 1 0 011-1h1m16 3h1a1 1 0 001-1v-1a1 1 0 00-1-1h-1"/>
+                        </svg>
+                    </div>
+                    <div class="stat-info">
+                        <span class="stat-label">Total Cars</span>
+                        <span class="stat-value" id="cars-count">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Progress Bar -->
+            <div class="progress-section">
+                <div class="progress-header">
+                    <span>Overall Parking Occupancy</span>
+                    <span id="occupancy-percent">0%</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progress-fill"></div>
+                </div>
+            </div>
+
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>Smart Parking Monitor - Diploma Project 2026</p>
+            <p class="footer-tech">FastAPI + YOLO + WebSocket | 2 Cameras</p>
+        </footer>
+    </div>
+
+    <!-- Fullscreen Modal -->
+    <div class="fullscreen-modal" id="fullscreen-modal">
+        <button class="fullscreen-close" id="fullscreen-close" title="Close">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+        </button>
+        <canvas id="fullscreen-canvas"></canvas>
+    </div>
+
+    <script src="/static/js/app.js?v=5"></script>
+</body>
+</html>

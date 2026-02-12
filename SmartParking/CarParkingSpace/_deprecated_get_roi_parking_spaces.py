@@ -1,28 +1,19 @@
 # Import necessary libraries
-import math
-import cv2
-import cvzone
-import mss
-import numpy as np
+import cv2  # OpenCV library for computer vision tasks
+import numpy as np  # NumPy library for numerical operations
+import pickle  # Pickle library for serializing Python objects
 import win32gui
-
-from ultralytics import YOLO
+import mss
 
 # ------------ Variables --------------
-model_path = "../../Models/Car_Detector.pt"
-confidence = 0.8
-class_names = ["car"]
-ALL_PARKING_SPACES_NUMBER = 12
-
-# Load the YOLO model
-model = YOLO(model_path)
-
-# Global variable to store the HWND of OpenCV window
-opencv_window_hwnd = None
+totalSpaces = 12
+polygons = []
+current_polygon = []
+counter = 0
 
 last_found_window_title = ""
 window_found_before = False
-
+opencv_window_hwnd = None
 
 def find_unreal_window(opencv_window_hwnd=None):
     """
@@ -52,7 +43,7 @@ def find_unreal_window(opencv_window_hwnd=None):
                 return True
 
             # Skip windows related to our application
-            if "Object Detection" in window_title or "Detection" in window_title:
+            if "Mark Parking Spaces" in window_title or "Detection" in window_title:
                 return True
 
             # Include only Unreal Engine windows
@@ -95,7 +86,6 @@ def find_unreal_window(opencv_window_hwnd=None):
 
     return None
 
-
 def capture_unreal_window(opencv_window_hwnd=None):
     """
     Capture a screenshot of the Unreal Engine window.
@@ -126,54 +116,24 @@ def capture_unreal_window(opencv_window_hwnd=None):
         print(f"Error capturing window: {e}")
         return None
 
+# Function to handle mouse events (used to mark points for polygons)
+def mousePoints(event, x, y, flags, params):
+    global counter, current_polygon
 
-def get_object_list_yolo(_model, _img, _class_names, _confidence=0.5, draw=True):
-    """
-    Detect objects in the image using YOLO and draw bounding boxes
+    # If left mouse button is clicked
+    if event == cv2.EVENT_LBUTTONDOWN:
+        # Append the clicked point (x, y) to the current_polygon list
+        current_polygon.append((x, y))
 
-    Parameters:
-        - _model: YOLO model for object detection
-        - _img: Input image for object detection
-        - _class_names: List of class names to detect
-        - _confidence: Confidence level for object detection
-        - draw: Draw bounding boxes on image
-
-    Returns:
-        - _object_list: List of dictionaries containing information about detected objects.
-    """
-    # Run YOLO on the input image
-    _results = _model(_img, stream=False, verbose=False)
-    _object_list = []
-
-    # Iterate through the detected results
-    for r in _results:
-        boxes = r.boxes
-        for box in boxes:
-            # Extract information about the detected object
-            conf = math.ceil((box.conf[0] * 100)) / 100
-            if conf > _confidence:
-                x1, y1, x2, y2 = box.xyxy[0]
-                x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
-                w, h = x2 - x1, y2 - y1
-                center = x1 + (w // 2), y1 + (h // 2)
-                class_name = _class_names[int(box.cls[0])]
-
-                # Append information to the object list
-                _object_list.append({"bbox": (x1, y1, w, h),
-                                     "center": center,
-                                     "conf": conf,
-                                     "class": class_name})
-
-                # Draw bounding box and class label on the image if specified
-                if draw:
-                    cvzone.cornerRect(_img, (x1, y1, w, h))
-                    cvzone.putTextRect(_img, f'{class_name} {conf}',
-                                       (max(0, x1), max(35, y1)), scale=1, thickness=1)
-    return _object_list
-
+        # If we have collected four points for one polygon
+        if len(current_polygon) == 4:
+            polygons.append(current_polygon)  # Add the polygon to the list
+            current_polygon = []  # Reset for the next polygon
+            counter += 1  # Increment the counter
+            print(polygons)  # Print the collected polygons
 
 # Create the unique-name-window
-window_name = "AI Object Detection - UE5"
+window_name = "Mark Parking Spaces - UE5"
 cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
 
 # Receive HWND OpenCV HWND window to delete it from search
@@ -194,38 +154,34 @@ try:
 
         win32gui.EnumWindows(enum_callback, None)
 
-
     find_opencv_window()
 except:
     pass
 
-print("Starting object detection for Unreal Engine 5...")
-print("Press 'q' to quit or close the window")
+print("Starting parking space marking for Unreal Engine 5...")
+print("Click to mark 4 points for each parking space. Press 'q' to quit early.")
 
-# Main loop
-frame_count = 0
+# Main loop for capturing window and marking parking spaces
 while True:
-    img = capture_unreal_window()
+    img = capture_unreal_window(opencv_window_hwnd)
 
     if img is not None:
-        object_list = get_object_list_yolo(model, img, class_names, confidence, draw=True)
+        # Draw the collected polygons on the image
+        for polygon in polygons:
+            cv2.polylines(img, [np.array(polygon)], isClosed=True, color=(0, 255, 0), thickness=2)
 
-        # Calculate available parking spaces
-        available_spaces = ALL_PARKING_SPACES_NUMBER - len(object_list)
+        # If we have collected all polygons, then save and exit the loop
+        if counter == totalSpaces:
+            with open('polygons.p', 'wb') as fileObj:
+                pickle.dump(polygons, fileObj)  # Save the polygons to a file
+            print("Saved all polygon points.")
+            break
 
-        # Set color based on the availability of parking spaces
-        if available_spaces == 0:
-            color = (0, 0, 255)
-        else:
-            color = (0, 200, 0)
-
-        # Help information about number of found objects
-        info_text = f"Available: {available_spaces}/{ALL_PARKING_SPACES_NUMBER}"
-        cv2.putText(img, info_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-        #cvzone.putTextRect(img, info_text, (10, 30), colorR=color, fontScale=0.7, thickness=2)
-
+        # Display the image with marked polygons
         cv2.imshow(window_name, img)
-        frame_count += 1
+
+        # Set the mouse callback function for marking points
+        cv2.setMouseCallback(window_name, mousePoints)
     else:
         # Display a message if capture fails
         blank_img = np.zeros((480, 640, 3), dtype=np.uint8)
@@ -240,7 +196,11 @@ while True:
     # Handle window close or 'q' key to exit
     key = cv2.waitKey(1) & 0xFF
     if key == ord('q') or cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 1:
+        if counter > 0:
+            with open('polygons.p', 'wb') as fileObj:
+                pickle.dump(polygons, fileObj)
+            print(f"Saved {counter} polygons early.")
         break
 
 cv2.destroyAllWindows()
-print("Object detection stopped.")
+print("Parking space marking stopped.")
