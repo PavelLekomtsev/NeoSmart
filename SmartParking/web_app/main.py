@@ -112,7 +112,10 @@ async def get_stats():
         all_stats[cam_id] = stats
         total_spaces += stats.get("total_spaces", 0)
         total_occupied += stats.get("occupied", 0)
-        total_cars += stats.get("cars_detected", 0)
+        # Only count cars from camera1 to avoid duplicates
+        # (camera2 sees the same cars from a different angle)
+        if cam_id == "camera1":
+            total_cars += stats.get("cars_detected", 0)
 
     all_stats["aggregate"] = {
         "total_spaces": total_spaces,

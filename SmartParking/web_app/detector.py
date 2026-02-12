@@ -276,9 +276,10 @@ class ParkingDetector:
             occupied = self.overlay_parking_spaces(img, object_list, polygons)
             available = total_spaces - occupied
         else:
-            available = total_spaces - cars_detected
-            occupied = cars_detected
-            if available <= 0:
+            # Car counter mode: no polygon-based occupancy, just count cars
+            occupied = 0
+            available = total_spaces
+            if available < 0:
                 available = 0
 
         stats = {
