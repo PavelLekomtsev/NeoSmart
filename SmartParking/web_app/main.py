@@ -107,7 +107,7 @@ async def get_stats():
     total_cars = 0
 
     for cam_id in CAMERA_IDS:
-        stats = det.get_stats()
+        stats = dict(det.get_stats(cam_id))
         stats["frames_received"] = frame_storages[cam_id].frame_count
         all_stats[cam_id] = stats
         total_spaces += stats.get("total_spaces", 0)
@@ -249,7 +249,7 @@ async def stream_frames(websocket: WebSocket, det: ParkingDetector):
 
                 if original_frame is not None:
                     processed_frame = original_frame.copy()
-                    processed_frame, stats = det.process_frame(processed_frame)
+                    processed_frame, stats = det.process_frame(processed_frame, cam_id)
                     stats["ue5_connected"] = True
 
                     _, original_buffer = cv2.imencode('.jpg', original_frame,
@@ -275,13 +275,14 @@ async def stream_frames(websocket: WebSocket, det: ParkingDetector):
                                              [cv2.IMWRITE_JPEG_QUALITY, 70])
                     placeholder_b64 = base64.b64encode(buffer).decode('utf-8')
 
+                    cam_total = det.camera_total_spaces.get(cam_id, 12)
                     cameras_data[cam_id] = {
                         "original": placeholder_b64,
                         "processed": placeholder_b64,
                         "stats": {
-                            "total_spaces": det.total_spaces,
+                            "total_spaces": cam_total,
                             "occupied": 0,
-                            "available": det.total_spaces,
+                            "available": cam_total,
                             "cars_detected": 0,
                             "mode": det.mode,
                             "ue5_connected": False

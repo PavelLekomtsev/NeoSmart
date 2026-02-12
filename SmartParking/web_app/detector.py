@@ -25,46 +25,75 @@ class ParkingDetector:
     MODE_PARKING_SPACES = "parking_spaces"
     MODE_CAR_COUNTER = "car_counter"
 
-    def __init__(self, model_path: str = None, polygons_path: str = None):
+    CAMERA_IDS = ["camera1", "camera2"]
+
+    def __init__(self, model_path: str = None):
         """
-        Initialize the parking detector.
+        Initialize the parking detector with per-camera polygon support.
 
         Args:
             model_path: Path to YOLO model file
-            polygons_path: Path to polygons pickle file
         """
         base_dir = Path(__file__).parent
+        parking_dir = base_dir.parent / "CarParkingSpace"
 
-        # web_app -> SmartParking -> NeoSmart -> Models
         if model_path is None:
             model_path = str(base_dir.parent.parent / "Models" / "Car_Detector.pt")
-        if polygons_path is None:
-            polygons_path = str(base_dir.parent / "CarParkingSpace" / "polygons.p")
 
         self.model = YOLO(model_path)
         self.class_names = ["car"]
         self.confidence = 0.8
 
-        self.polygons = []
-        self.total_spaces = 12
-        try:
-            with open(polygons_path, 'rb') as f:
-                self.polygons = pickle.load(f)
-                self.total_spaces = len(self.polygons) if self.polygons else 12
-        except FileNotFoundError:
-            print(f"Warning: Polygons file not found at {polygons_path}")
+        # Per-camera polygons and stats
+        self.camera_polygons = {}
+        self.camera_total_spaces = {}
+        self.camera_stats = {}
+
+        for cam_id in self.CAMERA_IDS:
+            polygons = []
+            cam_file = parking_dir / f"{cam_id}_parkings.p"
+            fallback_file = parking_dir / "polygons.p"
+
+            if cam_file.exists():
+                try:
+                    with open(cam_file, 'rb') as f:
+                        polygons = pickle.load(f)
+                    print(f"Loaded {len(polygons)} polygons for {cam_id}")
+                except Exception as e:
+                    print(f"Warning: Could not load {cam_file}: {e}")
+            elif fallback_file.exists():
+                try:
+                    with open(fallback_file, 'rb') as f:
+                        polygons = pickle.load(f)
+                    print(f"Loaded {len(polygons)} polygons from fallback for {cam_id}")
+                except Exception as e:
+                    print(f"Warning: Could not load {fallback_file}: {e}")
+
+            total = len(polygons) if polygons else 12
+            self.camera_polygons[cam_id] = polygons
+            self.camera_total_spaces[cam_id] = total
+            self.camera_stats[cam_id] = {
+                "total_spaces": total,
+                "occupied": 0,
+                "available": total,
+                "cars_detected": 0
+            }
+
+        # Legacy single-camera compat
+        self.polygons = self.camera_polygons.get("camera1", [])
+        self.total_spaces = self.camera_total_spaces.get("camera1", 12)
 
         self.mode = self.MODE_PARKING_SPACES
 
         self._last_found_window_title = ""
         self._window_found_before = False
 
-        self.last_stats = {
-            "total_spaces": self.total_spaces,
+        self.last_stats = self.camera_stats.get("camera1", {
+            "total_spaces": 12,
             "occupied": 0,
-            "available": self.total_spaces,
+            "available": 12,
             "cars_detected": 0
-        }
+        })
 
     def set_mode(self, mode: str):
         """Set detection mode."""
@@ -184,24 +213,28 @@ class ParkingDetector:
 
         return object_list
 
-    def overlay_parking_spaces(self, img: np.ndarray, object_list: list) -> int:
+    def overlay_parking_spaces(self, img: np.ndarray, object_list: list,
+                               polygons: list = None) -> int:
         """
         Overlay parking space polygons on the image.
 
         Args:
             img: Input image (will be modified in place)
             object_list: List of detected cars
+            polygons: List of polygon points (uses self.polygons if None)
 
         Returns:
             Number of occupied spaces
         """
-        if not self.polygons:
+        if polygons is None:
+            polygons = self.polygons
+        if not polygons:
             return 0
 
         overlay = img.copy()
         occupied_count = 0
 
-        for polygon in self.polygons:
+        for polygon in polygons:
             is_empty = True
             polygon_array = np.array(polygon, np.int32).reshape((-1, 1, 2))
 
@@ -222,12 +255,13 @@ class ParkingDetector:
 
         return occupied_count
 
-    def process_frame(self, img: np.ndarray) -> tuple[np.ndarray, dict]:
+    def process_frame(self, img: np.ndarray, camera_id: str = "camera1") -> tuple[np.ndarray, dict]:
         """
-        Process a frame with current detection mode.
+        Process a frame with current detection mode using per-camera polygons.
 
         Args:
             img: Input image in BGR format
+            camera_id: Which camera this frame belongs to
 
         Returns:
             Tuple of (processed_image, stats_dict)
@@ -235,27 +269,34 @@ class ParkingDetector:
         object_list = self.detect_cars(img, draw=True)
         cars_detected = len(object_list)
 
-        if self.mode == self.MODE_PARKING_SPACES:
-            occupied = self.overlay_parking_spaces(img, object_list)
-            available = self.total_spaces - occupied
+        total_spaces = self.camera_total_spaces.get(camera_id, 12)
+        polygons = self.camera_polygons.get(camera_id, [])
+
+        if self.mode == self.MODE_PARKING_SPACES and polygons:
+            occupied = self.overlay_parking_spaces(img, object_list, polygons)
+            available = total_spaces - occupied
         else:
-            available = self.total_spaces - cars_detected
+            available = total_spaces - cars_detected
             occupied = cars_detected
             if available <= 0:
                 available = 0
 
-        self.last_stats = {
-            "total_spaces": self.total_spaces,
+        stats = {
+            "total_spaces": total_spaces,
             "occupied": occupied,
             "available": available,
             "cars_detected": cars_detected,
             "mode": self.mode
         }
+        self.camera_stats[camera_id] = stats
+        self.last_stats = stats
 
-        return img, self.last_stats
+        return img, stats
 
-    def get_stats(self) -> dict:
-        """Get last computed statistics."""
+    def get_stats(self, camera_id: str = None) -> dict:
+        """Get last computed statistics for a camera."""
+        if camera_id and camera_id in self.camera_stats:
+            return self.camera_stats[camera_id]
         return self.last_stats
 
 
