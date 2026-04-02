@@ -25,6 +25,18 @@ class ParkingDetector:
     MODE_PARKING_SPACES = "parking_spaces"
     MODE_CAR_COUNTER = "car_counter"
 
+    # Wrong parking: % of bbox outside polygon to classify as wrong
+    OUTSIDE_THRESHOLD_DEFAULT = 35
+    OUTSIDE_THRESHOLD_EDGE = 45
+
+    # Per-camera edge polygon indices (fish-eye distortion → higher threshold)
+    # camera1: first 2 (left edge) and last 2 (right edge)
+    # camera2: last 2 (far edge)
+    EDGE_INDICES = {
+        "camera1": lambda n: {0, 1, n - 2, n - 1},
+        "camera2": lambda n: {n - 2, n - 1},
+    }
+
     CAMERA_IDS = ["camera1", "camera2"]
 
     def __init__(self, model_path: str = None):
@@ -76,7 +88,8 @@ class ParkingDetector:
                 "total_spaces": total,
                 "occupied": 0,
                 "available": total,
-                "cars_detected": 0
+                "cars_detected": 0,
+                "wrong_count": 0
             }
 
         # Legacy single-camera compat
@@ -92,7 +105,8 @@ class ParkingDetector:
             "total_spaces": 12,
             "occupied": 0,
             "available": 12,
-            "cars_detected": 0
+            "cars_detected": 0,
+            "wrong_count": 0
         })
 
     def set_mode(self, mode: str):
@@ -213,47 +227,92 @@ class ParkingDetector:
 
         return object_list
 
-    def overlay_parking_spaces(self, img: np.ndarray, object_list: list,
-                               polygons: list = None) -> int:
-        """
-        Overlay parking space polygons on the image.
+    def _get_threshold(self, camera_id: str, index: int, total: int) -> float:
+        """Get wrong-parking threshold for a polygon by camera and index."""
+        edge_fn = self.EDGE_INDICES.get(camera_id)
+        if edge_fn and index in edge_fn(total):
+            return self.OUTSIDE_THRESHOLD_EDGE
+        return self.OUTSIDE_THRESHOLD_DEFAULT
 
-        Args:
-            img: Input image (will be modified in place)
-            object_list: List of detected cars
-            polygons: List of polygon points (uses self.polygons if None)
+    def overlay_parking_spaces(self, img: np.ndarray, object_list: list,
+                               polygons: list = None,
+                               camera_id: str = "camera1") -> tuple[int, int]:
+        """
+        Overlay parking space polygons and detect wrong parking.
+
+        Free spots are green, occupied spots are red.
+        If a car's bbox extends beyond the threshold outside its polygon,
+        it gets a red bbox and a "Wrong" label.
 
         Returns:
-            Number of occupied spaces
+            (occupied_count, wrong_count)
         """
         if polygons is None:
             polygons = self.polygons
         if not polygons:
-            return 0
+            return 0, 0
 
         overlay = img.copy()
         occupied_count = 0
+        wrong_count = 0
+        wrong_cars = []
+        total = len(polygons)
 
-        for polygon in polygons:
-            is_empty = True
+        for i, polygon in enumerate(polygons):
             polygon_array = np.array(polygon, np.int32).reshape((-1, 1, 2))
 
+            car_in_spot = None
             for obj in object_list:
-                car_center = obj["center"]
-                result = cv2.pointPolygonTest(polygon_array, car_center, False)
-                if result >= 0:
-                    is_empty = False
-                    occupied_count += 1
+                if cv2.pointPolygonTest(polygon_array, obj["center"], False) >= 0:
+                    car_in_spot = obj
                     break
 
-            if is_empty:
+            if car_in_spot is None:
                 cv2.fillPoly(overlay, [polygon_array], (0, 255, 0))  # Green - free
             else:
                 cv2.fillPoly(overlay, [polygon_array], (0, 0, 255))  # Red - occupied
+                occupied_count += 1
+
+                threshold = self._get_threshold(camera_id, i, total)
+                pct = self._compute_outside_percentage(
+                    polygon, car_in_spot["bbox"], img.shape)
+                if pct > threshold:
+                    wrong_count += 1
+                    wrong_cars.append((car_in_spot["bbox"], pct))
 
         cv2.addWeighted(overlay, 0.35, img, 0.65, 0, img)
 
-        return occupied_count
+        # Draw wrong parking indicators on top of everything
+        for bbox, pct in wrong_cars:
+            x, y, w, h = bbox
+            cvzone.cornerRect(img, (x, y, w, h),
+                              colorR=(0, 0, 255), colorC=(0, 0, 255))
+            label_y = y if y >= 200 else y + h + 25
+            cvzone.putTextRect(img, f"Wrong ({pct:.0f}%)", (x, label_y),
+                               scale=1.2, colorR=(0, 0, 255), thickness=2)
+
+        return occupied_count, wrong_count
+
+    def _compute_outside_percentage(self, polygon_pts: list, bbox: tuple,
+                                       img_shape: tuple) -> float:
+        """Calculate what % of a car's bbox is outside its parking polygon."""
+        height, width = img_shape[:2]
+
+        poly_mask = np.zeros((height, width), dtype=np.uint8)
+        pts = np.array(polygon_pts, dtype=np.int32).reshape((-1, 1, 2))
+        cv2.fillPoly(poly_mask, [pts], 255)
+
+        car_mask = np.zeros((height, width), dtype=np.uint8)
+        x, y, w, h = bbox
+        cv2.rectangle(car_mask, (x, y), (x + w, y + h), 255, -1)
+
+        total_car_area = cv2.countNonZero(car_mask)
+        if total_car_area == 0:
+            return 0.0
+
+        intersection = cv2.bitwise_and(poly_mask, car_mask)
+        intersection_area = cv2.countNonZero(intersection)
+        return ((total_car_area - intersection_area) / total_car_area) * 100
 
     def process_frame(self, img: np.ndarray, camera_id: str = "camera1") -> tuple[np.ndarray, dict]:
         """
@@ -272,21 +331,21 @@ class ParkingDetector:
         total_spaces = self.camera_total_spaces.get(camera_id, 12)
         polygons = self.camera_polygons.get(camera_id, [])
 
+        wrong_count = 0
+
         if self.mode == self.MODE_PARKING_SPACES and polygons:
-            occupied = self.overlay_parking_spaces(img, object_list, polygons)
+            occupied, wrong_count = self.overlay_parking_spaces(img, object_list, polygons, camera_id)
             available = total_spaces - occupied
         else:
-            # Car counter mode: no polygon-based occupancy, just count cars
             occupied = 0
             available = total_spaces
-            if available < 0:
-                available = 0
 
         stats = {
             "total_spaces": total_spaces,
             "occupied": occupied,
             "available": available,
             "cars_detected": cars_detected,
+            "wrong_count": wrong_count,
             "mode": self.mode
         }
         self.camera_stats[camera_id] = stats
