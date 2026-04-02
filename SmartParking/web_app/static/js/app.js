@@ -23,6 +23,8 @@ class ParkingMonitor {
                 availableEl: document.getElementById(`${camId}-available`),
                 occupiedEl: document.getElementById(`${camId}-occupied`),
                 carsEl: document.getElementById(`${camId}-cars`),
+                wrongEl: document.getElementById(`${camId}-wrong`),
+                wrongCard: document.getElementById(`${camId}-wrong-card`),
                 originalImage: new Image(),
                 processedImage: new Image(),
             };
@@ -33,6 +35,8 @@ class ParkingMonitor {
         this.occupiedCount = document.getElementById('occupied-count');
         this.totalCount = document.getElementById('total-count');
         this.carsCount = document.getElementById('cars-count');
+        this.wrongCount = document.getElementById('wrong-count');
+        this.wrongCard = document.getElementById('wrong-card');
         this.occupancyPercent = document.getElementById('occupancy-percent');
         this.progressFill = document.getElementById('progress-fill');
 
@@ -121,6 +125,7 @@ class ParkingMonitor {
                 let totalSpaces = 0;
                 let totalOccupied = 0;
                 let totalCars = 0;
+                let totalWrong = 0;
                 let anyConnected = false;
                 let currentMode = null;
 
@@ -133,6 +138,7 @@ class ParkingMonitor {
                         const stats = camData.stats || {};
                         totalSpaces += stats.total_spaces || 0;
                         totalOccupied += stats.occupied || 0;
+                        totalWrong += stats.wrong_count || 0;
                         // Only count cars from camera1 (camera2 sees the same cars)
                         if (camId === 'camera1') {
                             totalCars += stats.cars_detected || 0;
@@ -142,7 +148,7 @@ class ParkingMonitor {
                     }
                 }
 
-                this.updateAggregateStats(totalSpaces, totalOccupied, totalCars, currentMode);
+                this.updateAggregateStats(totalSpaces, totalOccupied, totalCars, totalWrong, currentMode);
                 this.updateSourceBadge(anyConnected ? 'http' : 'none');
             }
         } catch (error) {
@@ -244,17 +250,27 @@ class ParkingMonitor {
         const available = stats.available || 0;
         const occupied = stats.occupied || 0;
         const cars = stats.cars_detected || 0;
+        const wrong = stats.wrong_count || 0;
         const connected = stats.ue5_connected || false;
         const isCarCounter = stats.mode === 'car_counter';
 
         cam.availableEl.textContent = available;
         cam.occupiedEl.textContent = isCarCounter ? '-' : occupied;
         cam.carsEl.textContent = cars;
+        if (cam.wrongEl) cam.wrongEl.textContent = isCarCounter ? '-' : wrong;
 
         // Dim the occupied card when in car_counter mode
         const occupiedCard = cam.occupiedEl.closest('.camera-stat-card');
         if (occupiedCard) {
             occupiedCard.style.opacity = isCarCounter ? '0.4' : '1';
+        }
+
+        // Wrong card
+        if (cam.wrongCard) {
+            cam.wrongCard.style.opacity = isCarCounter ? '0.4' : '1';
+            if (cam.wrongEl) {
+                cam.wrongEl.style.color = (!isCarCounter && wrong > 0) ? '#ef4444' : '';
+            }
         }
 
         // Update camera status badge
@@ -276,7 +292,7 @@ class ParkingMonitor {
         }
     }
 
-    updateAggregateStats(totalSpaces, totalOccupied, totalCars, mode) {
+    updateAggregateStats(totalSpaces, totalOccupied, totalCars, totalWrong, mode) {
         const isCarCounter = mode === 'car_counter';
         const totalAvailable = totalSpaces - totalOccupied;
 
@@ -284,6 +300,7 @@ class ParkingMonitor {
         this.occupiedCount.textContent = isCarCounter ? '-' : totalOccupied;
         this.totalCount.textContent = totalSpaces;
         this.carsCount.textContent = totalCars;
+        if (this.wrongCount) this.wrongCount.textContent = isCarCounter ? '-' : totalWrong;
 
         const occupancyPercentage = totalSpaces > 0 ? Math.round((totalOccupied / totalSpaces) * 100) : 0;
         this.occupancyPercent.textContent = isCarCounter ? '-' : occupancyPercentage + '%';
@@ -293,6 +310,14 @@ class ParkingMonitor {
         const occupiedCard = this.occupiedCount.closest('.stat-card');
         if (occupiedCard) {
             occupiedCard.style.opacity = isCarCounter ? '0.4' : '1';
+        }
+
+        // Wrong card
+        if (this.wrongCard) {
+            this.wrongCard.style.opacity = isCarCounter ? '0.4' : '1';
+            if (this.wrongCount) {
+                this.wrongCount.style.color = (!isCarCounter && totalWrong > 0) ? '#ef4444' : '';
+            }
         }
 
         if (totalAvailable === 0) {

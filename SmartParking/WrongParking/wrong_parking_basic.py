@@ -16,7 +16,7 @@ model_path = "../../Models/Car_Detector.pt"
 confidence = 0.8
 class_names = ["car"]
 
-# If actual_ratio < expected_correct_ratio * THRESHOLD_FACTOR → wrong parking
+# If actual_ratio < expected_correct_ratio * THRESHOLD_FACTOR -> wrong parking
 # 0.87 means: if ratio is less than 87% of what a correctly-parked car would have
 # at that position, it's considered wrong parking
 THRESHOLD_FACTOR = 0.87
@@ -51,12 +51,10 @@ if CALIBRATION_PATH.exists():
         with open(CALIBRATION_PATH, "rb") as f:
             calibration = pickle.load(f)
 
-        # Extract homography (optional)
         homography_matrix = calibration.get("homography")
         if homography_matrix is not None:
             print(f"Loaded perspective calibration (homography)")
 
-        # Extract adaptive threshold data
         if "near_y" in calibration and "far_y" in calibration:
             adaptive_calib = {
                 "near_y": calibration["near_y"],
@@ -75,7 +73,6 @@ if adaptive_calib is None:
     print("WARNING: No calibration found!")
     print(f"  Run calibrate_perspective.py first for {camera_id}.")
 
-# Global variable to store the HWND of OpenCV window
 opencv_window_hwnd = None
 
 last_found_window_title = ""
@@ -268,7 +265,6 @@ def find_wrong_parking(_object_list, _img, _H=None, _calib=None):
         if _calib is not None:
             threshold = get_adaptive_threshold(cy, _calib)
         else:
-            # No calibration: use fixed threshold (less accurate)
             threshold = 1.4
 
         if ratio < threshold:
@@ -279,7 +275,6 @@ def find_wrong_parking(_object_list, _img, _H=None, _calib=None):
             color = (0, 255, 0)
             text = "Correct"
 
-        # Position label above or below bbox depending on vertical position
         label_y = y
         if y < 200:
             label_y = y + h + 25
@@ -290,11 +285,9 @@ def find_wrong_parking(_object_list, _img, _H=None, _calib=None):
     return wrong_count
 
 
-# Create the unique-name-window
 window_name = f"Wrong Parking Detection - {camera_id}"
 cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
 
-# Receive HWND OpenCV HWND window to delete it from search
 try:
     time.sleep(0.1)
 
@@ -326,7 +319,6 @@ print("Controls:")
 print("  Q - Quit")
 print()
 
-# Main loop
 while True:
     img = capture_unreal_window(opencv_window_hwnd)
 

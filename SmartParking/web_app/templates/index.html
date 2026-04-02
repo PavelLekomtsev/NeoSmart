@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Smart Parking Monitor</title>
-    <link rel="stylesheet" href="/static/css/styles.css?v=4">
+    <link rel="stylesheet" href="/static/css/styles.css?v=5">
 </head>
 <body>
     <div class="container">
@@ -112,6 +112,17 @@
                             <span class="camera-stat-value" id="camera1-cars">-</span>
                         </div>
                     </div>
+                    <div class="camera-stat-card" id="camera1-wrong-card">
+                        <div class="camera-stat-icon occupied-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                        </div>
+                        <div class="camera-stat-info">
+                            <span class="camera-stat-label">Wrong</span>
+                            <span class="camera-stat-value" id="camera1-wrong">-</span>
+                        </div>
+                    </div>
                 </div>
             </section>
 
@@ -194,6 +205,17 @@
                             <span class="camera-stat-value" id="camera2-cars">-</span>
                         </div>
                     </div>
+                    <div class="camera-stat-card" id="camera2-wrong-card">
+                        <div class="camera-stat-icon occupied-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                        </div>
+                        <div class="camera-stat-info">
+                            <span class="camera-stat-label">Wrong</span>
+                            <span class="camera-stat-value" id="camera2-wrong">-</span>
+                        </div>
+                    </div>
                 </div>
             </section>
 
@@ -246,6 +268,18 @@
                         <span class="stat-value" id="cars-count">-</span>
                     </div>
                 </div>
+
+                <div class="stat-card" id="wrong-card">
+                    <div class="stat-icon occupied-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                    </div>
+                    <div class="stat-info">
+                        <span class="stat-label">Total Wrong</span>
+                        <span class="stat-value" id="wrong-count">-</span>
+                    </div>
+                </div>
             </div>
 
             <!-- Progress Bar -->
@@ -278,6 +312,6 @@
         <canvas id="fullscreen-canvas"></canvas>
     </div>
 
-    <script src="/static/js/app.js?v=5"></script>
+    <script src="/static/js/app.js?v=6"></script>
 </body>
 </html>
