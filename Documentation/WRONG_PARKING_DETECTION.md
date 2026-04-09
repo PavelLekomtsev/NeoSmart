@@ -30,23 +30,34 @@ Camera lenses introduce distortion, especially at the edges of the frame. Boundi
 
 | Camera | Polygon position | Threshold |
 |--------|-----------------|-----------|
-| camera1 | First 2 (left edge) | 45% |
-| camera1 | Middle spots | 35% |
-| camera1 | Last 2 (right edge) | 45% |
-| camera2 | All except last 2 | 35% |
+| camera1 | Rightmost 2 (indices 0, 1) | 52% (per-index override) |
+| camera1 | Edge spots (indices 0, 1, n-2, n-1) | 45% |
+| camera1 | Middle spots | 25% |
+| camera2 | All except last 2 | 31% (per-camera override) |
 | camera2 | Last 2 (far edge) | 45% |
+| camera3 | Edge spots (indices 0, 1, n-2, n-1) | 45% |
+| camera3 | Middle spots | 25% |
 
-Edge polygons get a higher threshold (45%) because fish-eye distortion makes bounding boxes extend further outside the polygon even when parking is correct. Central polygons use the default threshold (35%).
+The threshold priority chain is: **per-index override > edge threshold > per-camera default > global default**. Edge polygons get a higher threshold (45%) because fish-eye distortion makes bounding boxes extend further outside the polygon even when parking is correct.
 
 These thresholds are configured in `web_app/detector.py`:
 
 ```python
-OUTSIDE_THRESHOLD_DEFAULT = 35   # Central spots
+OUTSIDE_THRESHOLD_DEFAULT = 25   # Central spots (global default)
 OUTSIDE_THRESHOLD_EDGE = 45      # Edge spots (fish-eye distortion)
+
+OUTSIDE_THRESHOLD_PER_CAMERA = {
+    "camera2": 31,               # Per-camera default override
+}
 
 EDGE_INDICES = {
     "camera1": lambda n: {0, 1, n - 2, n - 1},  # Left 2 + right 2
     "camera2": lambda n: {n - 2, n - 1},          # Last 2 (far edge)
+    "camera3": lambda n: {0, 1, n - 2, n - 1},   # All 4 edges
+}
+
+OUTSIDE_THRESHOLD_OVERRIDES = {
+    "camera1": lambda n: {0: 52, 1: 52},  # Rightmost 2 spots
 }
 ```
 

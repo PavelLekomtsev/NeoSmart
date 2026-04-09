@@ -4,6 +4,7 @@ Combines car counting and parking space detection functionality.
 """
 
 import math
+import time
 import cv2
 import cvzone
 import numpy as np
@@ -12,6 +13,7 @@ import mss
 import win32gui
 from pathlib import Path
 from ultralytics import YOLO
+from sort import Sort
 
 
 class ParkingDetector:
@@ -45,10 +47,21 @@ class ParkingDetector:
 
     # Per-camera per-index threshold overrides (takes priority over edge/default)
     OUTSIDE_THRESHOLD_OVERRIDES = {
-        "camera1": lambda n: {n - 2: 52, n - 1: 52},
+        "camera1": lambda n: {0: 52, 1: 52},
     }
 
     CAMERA_IDS = ["camera1", "camera2", "camera3"]
+
+    # Cameras that use SORT tracking (paid zone only)
+    TRACKING_CAMERA_IDS = ["camera3"]
+
+    # SORT tracker parameters
+    SORT_MAX_AGE = 20       # frames to keep a track alive without detections
+    SORT_MIN_HITS = 5       # min detections before track is confirmed
+    SORT_IOU_THRESHOLD = 0.3
+
+    # Suspicious parking: time threshold in seconds
+    SUSPICIOUS_TIME_THRESHOLD = 30
 
     def __init__(self, model_path: str = None):
         """
@@ -119,6 +132,18 @@ class ParkingDetector:
             "cars_detected": 0,
             "wrong_count": 0
         })
+
+        # SORT trackers only for paid zone cameras
+        self.camera_trackers = {}
+        self.camera_track_times = {}  # {cam_id: {track_id: first_seen_timestamp}}
+        for cam_id in self.TRACKING_CAMERA_IDS:
+            self.camera_trackers[cam_id] = Sort(
+                max_age=self.SORT_MAX_AGE,
+                min_hits=self.SORT_MIN_HITS,
+                iou_threshold=self.SORT_IOU_THRESHOLD
+            )
+            self.camera_track_times[cam_id] = {}
+        print(f"SORT trackers initialized for {self.TRACKING_CAMERA_IDS} (suspicious threshold: {self.SUSPICIOUS_TIME_THRESHOLD}s)")
 
     def set_mode(self, mode: str):
         """Set detection mode."""
@@ -330,6 +355,117 @@ class ParkingDetector:
         intersection_area = cv2.countNonZero(intersection)
         return ((total_car_area - intersection_area) / total_car_area) * 100
 
+    def _convert_detections_for_sort(self, object_list: list) -> np.ndarray:
+        """Convert detector object_list to SORT format [[x1,y1,x2,y2,conf], ...]."""
+        if not object_list:
+            return np.empty((0, 5))
+        detections = np.empty((0, 5))
+        for obj in object_list:
+            x1, y1, w, h = obj["bbox"]
+            x2, y2 = x1 + w, y1 + h
+            detections = np.vstack([detections, [x1, y1, x2, y2, obj["conf"]]])
+        return detections
+
+    def _get_parking_spot_index(self, center: tuple, camera_id: str) -> int:
+        """Return the index of the parking polygon the point is in, or -1 if none."""
+        polygons = self.camera_polygons.get(camera_id, [])
+        for i, polygon in enumerate(polygons):
+            polygon_array = np.array(polygon, np.int32).reshape((-1, 1, 2))
+            if cv2.pointPolygonTest(polygon_array, center, False) >= 0:
+                return i
+        return -1
+
+    def _update_tracking(self, img: np.ndarray, object_list: list,
+                         camera_id: str) -> tuple[int, int]:
+        """
+        Run SORT tracker.
+        - Track ID is always shown for every tracked car.
+        - Timer starts only when a car enters a parking spot.
+        - Timer resets if the car changes to a different spot.
+        - Blue frame while parked, red frame + SUSPICIOUS after threshold.
+
+        Returns:
+            (tracked_count, suspicious_count)
+        """
+        tracker = self.camera_trackers[camera_id]
+        track_times = self.camera_track_times[camera_id]
+        # track_times stores {track_id: (start_time, spot_index)}
+        now = time.time()
+
+        dets = self._convert_detections_for_sort(object_list)
+        tracks = tracker.update(dets)
+
+        active_ids = set()
+        suspicious_count = 0
+
+        for track in tracks:
+            x1, y1, x2, y2, track_id = track
+            x1, y1, x2, y2, track_id = int(x1), int(y1), int(x2), int(y2), int(track_id)
+            active_ids.add(track_id)
+
+            center = ((x1 + x2) // 2, (y1 + y2) // 2)
+            spot_index = self._get_parking_spot_index(center, camera_id)
+
+            if spot_index >= 0:
+                # Car is in a parking spot
+                if track_id in track_times:
+                    prev_time, prev_spot = track_times[track_id]
+                    if prev_spot != spot_index:
+                        # Changed spot — reset timer
+                        track_times[track_id] = (now, spot_index)
+                else:
+                    # First time entering a spot
+                    track_times[track_id] = (now, spot_index)
+
+                start_time, _ = track_times[track_id]
+                elapsed = now - start_time
+                is_suspicious = elapsed >= self.SUSPICIOUS_TIME_THRESHOLD
+
+                if is_suspicious:
+                    suspicious_count += 1
+
+                self._draw_track_info(img, x1, y1, x2, y2, track_id, elapsed, is_suspicious)
+            else:
+                # Car is not in any spot — show ID only, reset timer
+                track_times.pop(track_id, None)
+                self._draw_track_id(img, x1, y1, x2, y2, track_id)
+
+        # Clean up tracks that are no longer active
+        stale_ids = [tid for tid in track_times if tid not in active_ids]
+        for tid in stale_ids:
+            del track_times[tid]
+
+        return len(tracks), suspicious_count
+
+    def _draw_track_id(self, img: np.ndarray, x1: int, y1: int, x2: int, y2: int,
+                       track_id: int):
+        """Draw only the track ID (car not in a parking spot yet)."""
+        label_y = y2 + 20 if y2 + 20 < img.shape[0] - 10 else y1 - 10
+        cvzone.putTextRect(img, f"ID:{track_id}", (max(0, x1), label_y),
+                           scale=0.8, thickness=1,
+                           colorR=(255, 200, 0), colorT=(255, 255, 255))
+
+    def _draw_track_info(self, img: np.ndarray, x1: int, y1: int, x2: int, y2: int,
+                         track_id: int, elapsed: float, is_suspicious: bool):
+        """Draw tracking ID + parked duration. Blue = normal, Red = suspicious."""
+        minutes = int(elapsed) // 60
+        seconds = int(elapsed) % 60
+        time_str = f"{minutes}:{seconds:02d}" if minutes > 0 else f"{seconds}s"
+
+        if is_suspicious:
+            color = (0, 0, 255)  # Red
+            label = f"ID:{track_id} {time_str} SUSPICIOUS"
+        else:
+            color = (255, 0, 0)  # Blue
+            label = f"ID:{track_id} {time_str}"
+
+        label_y = y2 + 20 if y2 + 20 < img.shape[0] - 10 else y1 - 10
+        cvzone.putTextRect(img, label, (max(0, x1), label_y),
+                           scale=0.8, thickness=1,
+                           colorR=color, colorT=(255, 255, 255))
+
+        cv2.rectangle(img, (x1, y1), (x2, y2), color, 3)
+
     def process_frame(self, img: np.ndarray, camera_id: str = "camera1") -> tuple[np.ndarray, dict]:
         """
         Process a frame with current detection mode using per-camera polygons.
@@ -356,12 +492,19 @@ class ParkingDetector:
             occupied = 0
             available = total_spaces
 
+        # Run SORT tracking (paid zone only)
+        tracked_count, suspicious_count = 0, 0
+        if camera_id in self.TRACKING_CAMERA_IDS:
+            tracked_count, suspicious_count = self._update_tracking(img, object_list, camera_id)
+
         stats = {
             "total_spaces": total_spaces,
             "occupied": occupied,
             "available": available,
             "cars_detected": cars_detected,
             "wrong_count": wrong_count,
+            "tracked_count": tracked_count,
+            "suspicious_count": suspicious_count,
             "mode": self.mode
         }
         self.camera_stats[camera_id] = stats

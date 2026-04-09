@@ -415,6 +415,11 @@ body {
     color: var(--accent-yellow);
 }
 
+.suspicious-icon {
+    background: rgba(168, 85, 247, 0.2);
+    color: #a855f7;
+}
+
 .stat-info {
     display: flex;
     flex-direction: column;
