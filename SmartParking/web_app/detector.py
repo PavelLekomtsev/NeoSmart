@@ -26,8 +26,13 @@ class ParkingDetector:
     MODE_CAR_COUNTER = "car_counter"
 
     # Wrong parking: % of bbox outside polygon to classify as wrong
-    OUTSIDE_THRESHOLD_DEFAULT = 35
+    OUTSIDE_THRESHOLD_DEFAULT = 25
     OUTSIDE_THRESHOLD_EDGE = 45
+
+    # Per-camera default threshold overrides
+    OUTSIDE_THRESHOLD_PER_CAMERA = {
+        "camera2": 31,
+    }
 
     # Per-camera edge polygon indices (fish-eye distortion → higher threshold)
     # camera1: first 2 (left edge) and last 2 (right edge)
@@ -35,9 +40,15 @@ class ParkingDetector:
     EDGE_INDICES = {
         "camera1": lambda n: {0, 1, n - 2, n - 1},
         "camera2": lambda n: {n - 2, n - 1},
+        "camera3": lambda n: {0, 1, n - 2, n - 1},
     }
 
-    CAMERA_IDS = ["camera1", "camera2"]
+    # Per-camera per-index threshold overrides (takes priority over edge/default)
+    OUTSIDE_THRESHOLD_OVERRIDES = {
+        "camera1": lambda n: {n - 2: 52, n - 1: 52},
+    }
+
+    CAMERA_IDS = ["camera1", "camera2", "camera3"]
 
     def __init__(self, model_path: str = None):
         """
@@ -229,10 +240,15 @@ class ParkingDetector:
 
     def _get_threshold(self, camera_id: str, index: int, total: int) -> float:
         """Get wrong-parking threshold for a polygon by camera and index."""
+        override_fn = self.OUTSIDE_THRESHOLD_OVERRIDES.get(camera_id)
+        if override_fn:
+            overrides = override_fn(total)
+            if index in overrides:
+                return overrides[index]
         edge_fn = self.EDGE_INDICES.get(camera_id)
         if edge_fn and index in edge_fn(total):
             return self.OUTSIDE_THRESHOLD_EDGE
-        return self.OUTSIDE_THRESHOLD_DEFAULT
+        return self.OUTSIDE_THRESHOLD_PER_CAMERA.get(camera_id, self.OUTSIDE_THRESHOLD_DEFAULT)
 
     def overlay_parking_spaces(self, img: np.ndarray, object_list: list,
                                polygons: list = None,

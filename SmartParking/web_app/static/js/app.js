@@ -1,10 +1,26 @@
 /**
- * Smart Parking Monitor - WebSocket Client (Multi-Camera)
+ * Smart Parking Monitor - WebSocket Client (Multi-Camera, Zone-Based)
  */
 
 class ParkingMonitor {
     constructor() {
-        this.cameraIds = ['camera1', 'camera2'];
+        this.cameraIds = ['camera1', 'camera2', 'camera3'];
+
+        // Zone definitions
+        this.zones = {
+            free: { cameras: ['camera1', 'camera2'], label: 'Free Parking' },
+            paid: { cameras: ['camera3'], label: 'Paid Parking' }
+        };
+
+        // Current active view
+        this.currentView = 'overview';
+
+        // View elements
+        this.views = {
+            overview: document.getElementById('view-overview'),
+            free: document.getElementById('view-free'),
+            paid: document.getElementById('view-paid')
+        };
 
         // Per-camera elements
         this.cameras = {};
@@ -30,7 +46,7 @@ class ParkingMonitor {
             };
         }
 
-        // Aggregate stats elements
+        // Global aggregate stats elements (overview)
         this.availableCount = document.getElementById('available-count');
         this.occupiedCount = document.getElementById('occupied-count');
         this.totalCount = document.getElementById('total-count');
@@ -40,16 +56,69 @@ class ParkingMonitor {
         this.occupancyPercent = document.getElementById('occupancy-percent');
         this.progressFill = document.getElementById('progress-fill');
 
+        // Per-zone stats elements
+        this.zoneElements = {
+            free: {
+                available: document.getElementById('free-zone-available'),
+                occupied: document.getElementById('free-zone-occupied'),
+                total: document.getElementById('free-zone-total'),
+                cars: document.getElementById('free-zone-cars'),
+                wrong: document.getElementById('free-zone-wrong'),
+                wrongCard: document.getElementById('free-zone-wrong-card'),
+                progressFill: document.getElementById('free-zone-progress-fill'),
+                occupancyPercent: document.getElementById('free-zone-occupancy-percent'),
+            },
+            paid: {
+                available: document.getElementById('paid-zone-available'),
+                occupied: document.getElementById('paid-zone-occupied'),
+                total: document.getElementById('paid-zone-total'),
+                cars: document.getElementById('paid-zone-cars'),
+                wrong: document.getElementById('paid-zone-wrong'),
+                wrongCard: document.getElementById('paid-zone-wrong-card'),
+                progressFill: document.getElementById('paid-zone-progress-fill'),
+                occupancyPercent: document.getElementById('paid-zone-occupancy-percent'),
+            }
+        };
+
+        // Overview card elements
+        this.overviewElements = {
+            free: {
+                available: document.getElementById('overview-free-available'),
+                occupied: document.getElementById('overview-free-occupied'),
+                cars: document.getElementById('overview-free-cars'),
+                progress: document.getElementById('overview-free-progress'),
+            },
+            paid: {
+                available: document.getElementById('overview-paid-available'),
+                occupied: document.getElementById('overview-paid-occupied'),
+                cars: document.getElementById('overview-paid-cars'),
+                progress: document.getElementById('overview-paid-progress'),
+            }
+        };
+
+        // Nav badge elements
+        this.navBadges = {
+            free: document.getElementById('free-zone-count'),
+            paid: document.getElementById('paid-zone-count'),
+        };
+
         // Connection status
         this.connectionStatus = document.getElementById('connection-status');
         this.statusText = this.connectionStatus.querySelector('.status-text');
 
-        // Source badge
-        this.sourceBadge = document.getElementById('source-badge');
-
         // Mode selector
         this.modeSelect = document.getElementById('mode-select');
         this.modeSelect.addEventListener('change', () => this.changeMode());
+
+        // Zone tab navigation
+        document.querySelectorAll('.zone-tab').forEach(tab => {
+            tab.addEventListener('click', () => this.switchView(tab.dataset.view));
+        });
+
+        // Zone detail buttons (on overview cards)
+        document.querySelectorAll('.zone-detail-btn').forEach(btn => {
+            btn.addEventListener('click', () => this.switchView(btn.dataset.view));
+        });
 
         // WebSocket
         this.ws = null;
@@ -84,6 +153,53 @@ class ParkingMonitor {
         this.connect();
     }
 
+    // --- View Switching ---
+
+    switchView(viewName) {
+        if (!this.views[viewName] || viewName === this.currentView) return;
+
+        // Hide all views
+        Object.values(this.views).forEach(v => v.classList.add('hidden'));
+
+        // Show target view with animation
+        const target = this.views[viewName];
+        target.classList.remove('hidden');
+        target.style.animation = 'none';
+        target.offsetHeight; // force reflow
+        target.style.animation = '';
+
+        // Update tab active state
+        document.querySelectorAll('.zone-tab').forEach(tab => {
+            tab.classList.toggle('active', tab.dataset.view === viewName);
+        });
+
+        this.currentView = viewName;
+
+        // Resize canvases in newly visible view (they had 0 size when hidden)
+        this.resizeVisibleCanvases(viewName);
+    }
+
+    resizeVisibleCanvases(viewName) {
+        const zoneDef = this.zones[viewName];
+        if (!zoneDef) return;
+
+        for (const camId of zoneDef.cameras) {
+            const cam = this.cameras[camId];
+            if (cam.originalImage.naturalWidth > 0) {
+                this.resizeCanvas(cam.originalCanvas, cam.originalImage);
+                cam.originalCtx.drawImage(cam.originalImage, 0, 0,
+                    cam.originalCanvas.width, cam.originalCanvas.height);
+            }
+            if (cam.processedImage.naturalWidth > 0) {
+                this.resizeCanvas(cam.processedCanvas, cam.processedImage);
+                cam.processedCtx.drawImage(cam.processedImage, 0, 0,
+                    cam.processedCanvas.width, cam.processedCanvas.height);
+            }
+        }
+    }
+
+    // --- WebSocket ---
+
     connect() {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${protocol}//${window.location.host}/ws/stream`;
@@ -109,7 +225,6 @@ class ParkingMonitor {
         this.reconnectAttempts = 0;
         this.updateConnectionStatus('connected');
 
-        // Hide overlays for all cameras
         for (const camId of this.cameraIds) {
             const cam = this.cameras[camId];
             cam.originalOverlay.classList.add('hidden');
@@ -129,6 +244,12 @@ class ParkingMonitor {
                 let anyConnected = false;
                 let currentMode = null;
 
+                // Per-zone accumulators
+                const zoneStats = {};
+                for (const zoneName of Object.keys(this.zones)) {
+                    zoneStats[zoneName] = { available: 0, occupied: 0, cars: 0, wrong: 0, total: 0 };
+                }
+
                 for (const camId of this.cameraIds) {
                     const camData = data.cameras[camId];
                     if (camData) {
@@ -136,20 +257,55 @@ class ParkingMonitor {
                         this.updateCameraStats(camId, camData.stats);
 
                         const stats = camData.stats || {};
-                        totalSpaces += stats.total_spaces || 0;
-                        totalOccupied += stats.occupied || 0;
-                        totalWrong += stats.wrong_count || 0;
-                        // Only count cars from camera1 (camera2 sees the same cars)
+                        const spaces = stats.total_spaces || 0;
+                        const occupied = stats.occupied || 0;
+                        const wrong = stats.wrong_count || 0;
+                        const cars = stats.cars_detected || 0;
+
+                        totalSpaces += spaces;
+                        totalOccupied += occupied;
+                        totalWrong += wrong;
+                        // Only count cars from camera1 (camera2 sees same area)
                         if (camId === 'camera1') {
-                            totalCars += stats.cars_detected || 0;
+                            totalCars += cars;
                         }
+                        // camera3 (paid zone) always counts its own cars
+                        if (camId === 'camera3') {
+                            totalCars += cars;
+                        }
+
                         if (stats.mode) currentMode = stats.mode;
                         if (stats.ue5_connected) anyConnected = true;
+
+                        // Accumulate into zone stats
+                        for (const [zoneName, zoneDef] of Object.entries(this.zones)) {
+                            if (zoneDef.cameras.includes(camId)) {
+                                zoneStats[zoneName].total += spaces;
+                                zoneStats[zoneName].occupied += occupied;
+                                zoneStats[zoneName].wrong += wrong;
+                                // Dedup: only camera1 for free zone cars
+                                if (zoneName === 'free' && camId === 'camera1') {
+                                    zoneStats[zoneName].cars += cars;
+                                }
+                                if (zoneName === 'paid') {
+                                    zoneStats[zoneName].cars += cars;
+                                }
+                            }
+                        }
                     }
                 }
 
+                // Compute available for each zone
+                for (const zoneName of Object.keys(zoneStats)) {
+                    zoneStats[zoneName].available = zoneStats[zoneName].total - zoneStats[zoneName].occupied;
+                }
+
+                // Update all UI sections
                 this.updateAggregateStats(totalSpaces, totalOccupied, totalCars, totalWrong, currentMode);
-                this.updateSourceBadge(anyConnected ? 'http' : 'none');
+                this.updateZoneStats('free', zoneStats.free, currentMode);
+                this.updateZoneStats('paid', zoneStats.paid, currentMode);
+                this.updateOverviewCards(zoneStats, currentMode);
+                this.updateNavBadges(zoneStats);
             }
         } catch (error) {
             console.error('Error processing message:', error);
@@ -171,7 +327,6 @@ class ParkingMonitor {
         if (this.reconnectAttempts < this.maxReconnectAttempts) {
             this.reconnectAttempts++;
             console.log(`Reconnecting in ${this.reconnectDelay}ms... (attempt ${this.reconnectAttempts})`);
-
             setTimeout(() => this.connect(), this.reconnectDelay);
         } else {
             console.error('Max reconnect attempts reached');
@@ -200,6 +355,8 @@ class ParkingMonitor {
         }
     }
 
+    // --- Rendering ---
+
     renderCameraFrames(camId, originalB64, processedB64) {
         const cam = this.cameras[camId];
 
@@ -224,6 +381,8 @@ class ParkingMonitor {
         const containerWidth = container.clientWidth;
         const containerHeight = container.clientHeight;
 
+        if (containerWidth === 0 || containerHeight === 0) return;
+
         const imageRatio = image.width / image.height;
         const containerRatio = containerWidth / containerHeight;
 
@@ -243,6 +402,19 @@ class ParkingMonitor {
         }
     }
 
+    // --- Stats Updates ---
+
+    updateStatValue(element, newValue) {
+        if (!element) return;
+        const newStr = String(newValue);
+        if (element.textContent !== newStr) {
+            element.textContent = newStr;
+            element.classList.remove('stat-updated');
+            void element.offsetHeight;
+            element.classList.add('stat-updated');
+        }
+    }
+
     updateCameraStats(camId, stats) {
         if (!stats) return;
 
@@ -254,18 +426,16 @@ class ParkingMonitor {
         const connected = stats.ue5_connected || false;
         const isCarCounter = stats.mode === 'car_counter';
 
-        cam.availableEl.textContent = available;
-        cam.occupiedEl.textContent = isCarCounter ? '-' : occupied;
-        cam.carsEl.textContent = cars;
-        if (cam.wrongEl) cam.wrongEl.textContent = isCarCounter ? '-' : wrong;
+        this.updateStatValue(cam.availableEl, available);
+        this.updateStatValue(cam.occupiedEl, isCarCounter ? '-' : occupied);
+        this.updateStatValue(cam.carsEl, cars);
+        if (cam.wrongEl) this.updateStatValue(cam.wrongEl, isCarCounter ? '-' : wrong);
 
-        // Dim the occupied card when in car_counter mode
         const occupiedCard = cam.occupiedEl.closest('.camera-stat-card');
         if (occupiedCard) {
             occupiedCard.style.opacity = isCarCounter ? '0.4' : '1';
         }
 
-        // Wrong card
         if (cam.wrongCard) {
             cam.wrongCard.style.opacity = isCarCounter ? '0.4' : '1';
             if (cam.wrongEl) {
@@ -273,7 +443,6 @@ class ParkingMonitor {
             }
         }
 
-        // Update camera status badge
         if (connected) {
             cam.statusBadge.textContent = 'Online';
             cam.statusBadge.className = 'camera-status online';
@@ -282,7 +451,6 @@ class ParkingMonitor {
             cam.statusBadge.className = 'camera-status offline';
         }
 
-        // Color for available count
         if (available === 0) {
             cam.availableEl.style.color = '#ef4444';
         } else if (available <= 3) {
@@ -296,23 +464,21 @@ class ParkingMonitor {
         const isCarCounter = mode === 'car_counter';
         const totalAvailable = totalSpaces - totalOccupied;
 
-        this.availableCount.textContent = totalAvailable;
-        this.occupiedCount.textContent = isCarCounter ? '-' : totalOccupied;
-        this.totalCount.textContent = totalSpaces;
-        this.carsCount.textContent = totalCars;
-        if (this.wrongCount) this.wrongCount.textContent = isCarCounter ? '-' : totalWrong;
+        this.updateStatValue(this.availableCount, totalAvailable);
+        this.updateStatValue(this.occupiedCount, isCarCounter ? '-' : totalOccupied);
+        this.updateStatValue(this.totalCount, totalSpaces);
+        this.updateStatValue(this.carsCount, totalCars);
+        if (this.wrongCount) this.updateStatValue(this.wrongCount, isCarCounter ? '-' : totalWrong);
 
         const occupancyPercentage = totalSpaces > 0 ? Math.round((totalOccupied / totalSpaces) * 100) : 0;
         this.occupancyPercent.textContent = isCarCounter ? '-' : occupancyPercentage + '%';
         this.progressFill.style.width = isCarCounter ? '0%' : occupancyPercentage + '%';
 
-        // Dim the aggregate occupied card in car_counter mode
         const occupiedCard = this.occupiedCount.closest('.stat-card');
         if (occupiedCard) {
             occupiedCard.style.opacity = isCarCounter ? '0.4' : '1';
         }
 
-        // Wrong card
         if (this.wrongCard) {
             this.wrongCard.style.opacity = isCarCounter ? '0.4' : '1';
             if (this.wrongCount) {
@@ -329,6 +495,93 @@ class ParkingMonitor {
         }
     }
 
+    updateZoneStats(zoneName, stats, mode) {
+        const els = this.zoneElements[zoneName];
+        if (!els) return;
+
+        const isCarCounter = mode === 'car_counter';
+        const { available, occupied, total, cars, wrong } = stats;
+
+        this.updateStatValue(els.available, available);
+        this.updateStatValue(els.occupied, isCarCounter ? '-' : occupied);
+        this.updateStatValue(els.total, total);
+        this.updateStatValue(els.cars, cars);
+        if (els.wrong) this.updateStatValue(els.wrong, isCarCounter ? '-' : wrong);
+
+        const occupancyPct = total > 0 ? Math.round((occupied / total) * 100) : 0;
+        if (els.occupancyPercent) {
+            els.occupancyPercent.textContent = isCarCounter ? '-' : occupancyPct + '%';
+        }
+        if (els.progressFill) {
+            els.progressFill.style.width = isCarCounter ? '0%' : occupancyPct + '%';
+        }
+
+        // Dim occupied and wrong cards in car_counter mode
+        if (els.occupied) {
+            const card = els.occupied.closest('.stat-card');
+            if (card) card.style.opacity = isCarCounter ? '0.4' : '1';
+        }
+        if (els.wrongCard) {
+            els.wrongCard.style.opacity = isCarCounter ? '0.4' : '1';
+            if (els.wrong) {
+                els.wrong.style.color = (!isCarCounter && wrong > 0) ? '#ef4444' : '';
+            }
+        }
+
+        // Color for available
+        if (els.available) {
+            if (available === 0) {
+                els.available.style.color = '#ef4444';
+            } else if (available <= 3) {
+                els.available.style.color = '#eab308';
+            } else {
+                els.available.style.color = '#22c55e';
+            }
+        }
+    }
+
+    updateOverviewCards(zoneStats, mode) {
+        const isCarCounter = mode === 'car_counter';
+
+        for (const [zoneName, stats] of Object.entries(zoneStats)) {
+            const els = this.overviewElements[zoneName];
+            if (!els) continue;
+
+            this.updateStatValue(els.available, stats.available);
+            this.updateStatValue(els.occupied, isCarCounter ? '-' : stats.occupied);
+            this.updateStatValue(els.cars, stats.cars);
+
+            // Mini progress bar
+            const pct = stats.total > 0 ? Math.round((stats.occupied / stats.total) * 100) : 0;
+            if (els.progress) {
+                els.progress.style.width = isCarCounter ? '0%' : pct + '%';
+            }
+
+            // Color available value
+            if (els.available) {
+                if (stats.available === 0) {
+                    els.available.style.color = '#ef4444';
+                } else if (stats.available <= 3) {
+                    els.available.style.color = '#eab308';
+                } else {
+                    // Use zone-specific color
+                    els.available.style.color = zoneName === 'paid' ? '#f59e0b' : '#22c55e';
+                }
+            }
+        }
+    }
+
+    updateNavBadges(zoneStats) {
+        for (const [zoneName, stats] of Object.entries(zoneStats)) {
+            const badge = this.navBadges[zoneName];
+            if (badge) {
+                this.updateStatValue(badge, stats.available);
+            }
+        }
+    }
+
+    // --- Mode ---
+
     changeMode() {
         const mode = this.modeSelect.value;
 
@@ -340,6 +593,8 @@ class ParkingMonitor {
             console.log('Mode changed to:', mode);
         }
     }
+
+    // --- Fullscreen ---
 
     openFullscreen(canvasId) {
         this.fullscreenSourceCanvasId = canvasId;
@@ -357,7 +612,6 @@ class ParkingMonitor {
     drawFullscreenFrame() {
         if (!this.fullscreenSourceCanvasId) return;
 
-        // Find the Image object for this canvas to render at full resolution
         let sourceImage = null;
         for (const camId of this.cameraIds) {
             const cam = this.cameras[camId];
@@ -374,22 +628,6 @@ class ParkingMonitor {
             this.fullscreenCanvas.width = sourceImage.naturalWidth;
             this.fullscreenCanvas.height = sourceImage.naturalHeight;
             this.fullscreenCtx.drawImage(sourceImage, 0, 0);
-        }
-    }
-
-    updateSourceBadge(source) {
-        if (!this.sourceBadge) return;
-
-        this.sourceBadge.classList.remove('http', 'file', 'screen');
-
-        switch (source) {
-            case 'http':
-                this.sourceBadge.textContent = 'HTTP Stream';
-                this.sourceBadge.classList.add('http');
-                break;
-            default:
-                this.sourceBadge.textContent = 'No Signal';
-                break;
         }
     }
 }

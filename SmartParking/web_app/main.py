@@ -46,11 +46,12 @@ templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
 FRAMES_DIR = Path("E:/Work/Computer_Vision/Projects/NeoSmart/SmartParking/frames")
 
-CAMERA_IDS = ["camera1", "camera2"]
+CAMERA_IDS = ["camera1", "camera2", "camera3"]
 
 FRAME_PATHS = {
     "camera1": FRAMES_DIR / "camera1.png",
     "camera2": FRAMES_DIR / "camera2.png",
+    "camera3": FRAMES_DIR / "camera3.png",
 }
 
 
@@ -144,6 +145,7 @@ async def receive_frame(request: Request):
         camera_id = data.get("camera_id", "camera1")
 
         if camera_id not in CAMERA_IDS:
+            print(f"[FRAME] Rejected unknown camera_id='{camera_id}', data={data}")
             return JSONResponse(
                 {"error": f"Unknown camera_id: {camera_id}", "valid_ids": CAMERA_IDS},
                 status_code=400
@@ -174,6 +176,7 @@ async def receive_frame(request: Request):
             time.sleep(0.03)
 
         if frame is None:
+            print(f"[FRAME] Failed to decode: camera_id='{camera_id}', path='{frame_path}', exists={frame_path.exists()}")
             return JSONResponse({
                 "error": "Failed to decode image file",
                 "path": str(frame_path)

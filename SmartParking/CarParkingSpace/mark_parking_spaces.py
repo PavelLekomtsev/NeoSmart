@@ -31,10 +31,10 @@ def main():
     print()
 
     while True:
-        cam_num = input("Camera number (1 or 2): ").strip()
-        if cam_num in ("1", "2"):
+        cam_num = input("Camera number (1, 2 or 3): ").strip()
+        if cam_num in ("1", "2", "3"):
             break
-        print("Please enter 1 or 2.")
+        print("Please enter 1, 2 or 3.")
 
     camera_id = f"camera{cam_num}"
     frame_path = frames_dir / f"{camera_id}.png"
