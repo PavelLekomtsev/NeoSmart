@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Smart Parking Monitor</title>
-    <link rel="stylesheet" href="/static/css/styles.css?v=7">
+    <link rel="stylesheet" href="/static/css/styles.css?v=10">
 </head>
 <body>
     <div class="container">
@@ -52,6 +52,13 @@
                 </svg>
                 <span>Paid Parking</span>
                 <span class="zone-tab-badge" id="paid-zone-count">-</span>
+            </button>
+            <button class="zone-tab" data-view="road">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l5.447 2.724A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
+                </svg>
+                <span>Road Traffic</span>
+                <span class="zone-tab-badge" id="road-zone-count">-</span>
             </button>
         </nav>
 
@@ -120,6 +127,32 @@
                         </div>
                         <div class="zone-mini-progress">
                             <div class="zone-mini-progress-fill" id="overview-paid-progress"></div>
+                        </div>
+                    </div>
+
+                    <!-- Road Zone Summary Card -->
+                    <div class="zone-summary-card zone-road">
+                        <div class="zone-summary-header">
+                            <div class="zone-summary-title">
+                                <span class="zone-indicator zone-indicator--road"></span>
+                                <h2>Road Traffic</h2>
+                                <span class="zone-camera-count">1 camera</span>
+                            </div>
+                            <button class="zone-detail-btn" data-view="road">View Details</button>
+                        </div>
+                        <div class="zone-summary-stats">
+                            <div class="zone-mini-stat">
+                                <span class="zone-mini-stat-label">Incoming</span>
+                                <span class="zone-mini-stat-value" id="overview-road-incoming" style="color: var(--accent-green)">0</span>
+                            </div>
+                            <div class="zone-mini-stat">
+                                <span class="zone-mini-stat-label">Outgoing</span>
+                                <span class="zone-mini-stat-value" id="overview-road-outgoing" style="color: #f97316">0</span>
+                            </div>
+                            <div class="zone-mini-stat">
+                                <span class="zone-mini-stat-label">Total</span>
+                                <span class="zone-mini-stat-value" id="overview-road-total" style="color: var(--accent-blue)">0</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -456,7 +489,7 @@
                 <!-- Camera 3 -->
                 <section class="camera-section">
                     <div class="camera-section-header">
-                        <h2>Camera 3</h2>
+                        <h2>Surveillance Camera</h2>
                         <span class="camera-status" id="camera3-status">Offline</span>
                     </div>
                     <div class="video-grid">
@@ -640,12 +673,133 @@
                 <div class="paid-zone-extras" id="paid-zone-extras"></div>
             </div>
 
+            <!-- VIEW: Road Traffic -->
+            <div class="view hidden" id="view-road" data-view="road">
+                <!-- Camera 4 -->
+                <section class="camera-section">
+                    <div class="camera-section-header">
+                        <h2>Road Traffic Camera</h2>
+                        <span class="camera-status" id="camera4-status">Offline</span>
+                    </div>
+                    <div class="video-grid">
+                        <div class="video-card">
+                            <div class="video-header">
+                                <h3>Unreal Engine Stream</h3>
+                                <span class="badge badge-blue">Original</span>
+                            </div>
+                            <div class="video-container">
+                                <canvas id="camera4-original-canvas"></canvas>
+                                <button class="fullscreen-btn" data-canvas="camera4-original-canvas" title="Fullscreen">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/>
+                                    </svg>
+                                </button>
+                                <div class="video-overlay" id="camera4-original-overlay">
+                                    <div class="loader"></div>
+                                    <p>Waiting for stream...</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="video-card">
+                            <div class="video-header">
+                                <h3>AI Detection Result</h3>
+                                <span class="badge badge-green">Processed</span>
+                            </div>
+                            <div class="video-container">
+                                <canvas id="camera4-processed-canvas"></canvas>
+                                <button class="fullscreen-btn" data-canvas="camera4-processed-canvas" title="Fullscreen">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/>
+                                    </svg>
+                                </button>
+                                <div class="video-overlay" id="camera4-processed-overlay">
+                                    <div class="loader"></div>
+                                    <p>Waiting for stream...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="camera-stats-panel">
+                        <div class="camera-stat-card">
+                            <div class="camera-stat-icon available-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M5 10l7-7m0 0l7 7m-7-7v18"/>
+                                </svg>
+                            </div>
+                            <div class="camera-stat-info">
+                                <span class="camera-stat-label">Incoming</span>
+                                <span class="camera-stat-value" id="camera4-incoming">0</span>
+                            </div>
+                        </div>
+                        <div class="camera-stat-card">
+                            <div class="camera-stat-icon occupied-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M19 14l-7 7m0 0l-7-7m7 7V3"/>
+                                </svg>
+                            </div>
+                            <div class="camera-stat-info">
+                                <span class="camera-stat-label">Outgoing</span>
+                                <span class="camera-stat-value" id="camera4-outgoing">0</span>
+                            </div>
+                        </div>
+                        <div class="camera-stat-card">
+                            <div class="camera-stat-icon cars-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M8 17h.01M16 17h.01M7 10h10M5 17l1-7h12l1 7M5 17H4a1 1 0 01-1-1v-1a1 1 0 011-1h1m16 3h1a1 1 0 001-1v-1a1 1 0 00-1-1h-1"/>
+                                </svg>
+                            </div>
+                            <div class="camera-stat-info">
+                                <span class="camera-stat-label">Total</span>
+                                <span class="camera-stat-value" id="camera4-total">0</span>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Road Zone Aggregate Stats -->
+                <div class="stats-panel">
+                    <div class="stat-card">
+                        <div class="stat-icon available-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M5 10l7-7m0 0l7 7m-7-7v18"/>
+                            </svg>
+                        </div>
+                        <div class="stat-info">
+                            <span class="stat-label">Incoming</span>
+                            <span class="stat-value" id="road-zone-incoming">0</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon occupied-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M19 14l-7 7m0 0l-7-7m7 7V3"/>
+                            </svg>
+                        </div>
+                        <div class="stat-info">
+                            <span class="stat-label">Outgoing</span>
+                            <span class="stat-value" id="road-zone-outgoing">0</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon cars-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M8 17h.01M16 17h.01M7 10h10M5 17l1-7h12l1 7M5 17H4a1 1 0 01-1-1v-1a1 1 0 011-1h1m16 3h1a1 1 0 001-1v-1a1 1 0 00-1-1h-1"/>
+                            </svg>
+                        </div>
+                        <div class="stat-info">
+                            <span class="stat-label">Total</span>
+                            <span class="stat-value" id="road-zone-total">0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
         </main>
 
         <!-- Footer -->
         <footer class="footer">
             <p>Smart Parking Monitor - Diploma Project 2026</p>
-            <p class="footer-tech">FastAPI + YOLO + WebSocket | 3 Cameras | 2 Zones</p>
+            <p class="footer-tech">FastAPI + YOLO + WebSocket | 4 Cameras | 3 Zones</p>
         </footer>
     </div>
 
@@ -659,6 +813,6 @@
         <canvas id="fullscreen-canvas"></canvas>
     </div>
 
-    <script src="/static/js/app.js?v=7"></script>
+    <script src="/static/js/app.js?v=10"></script>
 </body>
 </html>

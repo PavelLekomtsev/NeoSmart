@@ -4,12 +4,13 @@
 
 class ParkingMonitor {
     constructor() {
-        this.cameraIds = ['camera1', 'camera2', 'camera3'];
+        this.cameraIds = ['camera1', 'camera2', 'camera3', 'camera4'];
 
         // Zone definitions
         this.zones = {
             free: { cameras: ['camera1', 'camera2'], label: 'Free Parking' },
-            paid: { cameras: ['camera3'], label: 'Paid Parking' }
+            paid: { cameras: ['camera3'], label: 'Paid Parking' },
+            road: { cameras: ['camera4'], label: 'Road Traffic' }
         };
 
         // Current active view
@@ -19,7 +20,8 @@ class ParkingMonitor {
         this.views = {
             overview: document.getElementById('view-overview'),
             free: document.getElementById('view-free'),
-            paid: document.getElementById('view-paid')
+            paid: document.getElementById('view-paid'),
+            road: document.getElementById('view-road')
         };
 
         // Per-camera elements
@@ -43,6 +45,9 @@ class ParkingMonitor {
                 wrongCard: document.getElementById(`${camId}-wrong-card`),
                 suspiciousEl: document.getElementById(`${camId}-suspicious`),
                 suspiciousCard: document.getElementById(`${camId}-suspicious-card`),
+                incomingEl: document.getElementById(`${camId}-incoming`),
+                outgoingEl: document.getElementById(`${camId}-outgoing`),
+                trafficTotalEl: document.getElementById(`${camId}-total`),
                 originalImage: new Image(),
                 processedImage: new Image(),
             };
@@ -81,6 +86,11 @@ class ParkingMonitor {
                 suspiciousCard: document.getElementById('paid-zone-suspicious-card'),
                 progressFill: document.getElementById('paid-zone-progress-fill'),
                 occupancyPercent: document.getElementById('paid-zone-occupancy-percent'),
+            },
+            road: {
+                incoming: document.getElementById('road-zone-incoming'),
+                outgoing: document.getElementById('road-zone-outgoing'),
+                total: document.getElementById('road-zone-total'),
             }
         };
 
@@ -98,6 +108,11 @@ class ParkingMonitor {
                 cars: document.getElementById('overview-paid-cars'),
                 suspicious: document.getElementById('overview-paid-suspicious'),
                 progress: document.getElementById('overview-paid-progress'),
+            },
+            road: {
+                incoming: document.getElementById('overview-road-incoming'),
+                outgoing: document.getElementById('overview-road-outgoing'),
+                total: document.getElementById('overview-road-total'),
             }
         };
 
@@ -105,6 +120,7 @@ class ParkingMonitor {
         this.navBadges = {
             free: document.getElementById('free-zone-count'),
             paid: document.getElementById('paid-zone-count'),
+            road: document.getElementById('road-zone-count'),
         };
 
         // Connection status
@@ -154,6 +170,12 @@ class ParkingMonitor {
             if (e.key === 'Escape') this.closeFullscreen();
         });
 
+        // Restore last active view from localStorage
+        const savedView = localStorage.getItem('parkingMonitor_activeView');
+        if (savedView && this.views[savedView]) {
+            this.switchView(savedView);
+        }
+
         // Start connection
         this.connect();
     }
@@ -179,6 +201,7 @@ class ParkingMonitor {
         });
 
         this.currentView = viewName;
+        localStorage.setItem('parkingMonitor_activeView', viewName);
 
         // Resize canvases in newly visible view (they had 0 size when hidden)
         this.resizeVisibleCanvases(viewName);
@@ -252,7 +275,7 @@ class ParkingMonitor {
                 // Per-zone accumulators
                 const zoneStats = {};
                 for (const zoneName of Object.keys(this.zones)) {
-                    zoneStats[zoneName] = { available: 0, occupied: 0, cars: 0, wrong: 0, suspicious: 0, total: 0 };
+                    zoneStats[zoneName] = { available: 0, occupied: 0, cars: 0, wrong: 0, suspicious: 0, total: 0, incoming: 0, outgoing: 0 };
                 }
 
                 for (const camId of this.cameraIds) {
@@ -267,16 +290,19 @@ class ParkingMonitor {
                         const wrong = stats.wrong_count || 0;
                         const cars = stats.cars_detected || 0;
 
-                        totalSpaces += spaces;
-                        totalOccupied += occupied;
-                        totalWrong += wrong;
-                        // Only count cars from camera1 (camera2 sees same area)
-                        if (camId === 'camera1') {
-                            totalCars += cars;
-                        }
-                        // camera3 (paid zone) always counts its own cars
-                        if (camId === 'camera3') {
-                            totalCars += cars;
+                        // Road cameras don't contribute to parking totals
+                        if (camId !== 'camera4') {
+                            totalSpaces += spaces;
+                            totalOccupied += occupied;
+                            totalWrong += wrong;
+                            // Only count cars from camera1 (camera2 sees same area)
+                            if (camId === 'camera1') {
+                                totalCars += cars;
+                            }
+                            // camera3 (paid zone) always counts its own cars
+                            if (camId === 'camera3') {
+                                totalCars += cars;
+                            }
                         }
 
                         if (stats.mode) currentMode = stats.mode;
@@ -284,6 +310,8 @@ class ParkingMonitor {
 
                         // Accumulate into zone stats
                         const suspicious = stats.suspicious_count || 0;
+                        const incoming = stats.incoming_count || 0;
+                        const outgoing = stats.outgoing_count || 0;
 
                         for (const [zoneName, zoneDef] of Object.entries(this.zones)) {
                             if (zoneDef.cameras.includes(camId)) {
@@ -291,11 +319,16 @@ class ParkingMonitor {
                                 zoneStats[zoneName].occupied += occupied;
                                 zoneStats[zoneName].wrong += wrong;
                                 zoneStats[zoneName].suspicious += suspicious;
+                                zoneStats[zoneName].incoming += incoming;
+                                zoneStats[zoneName].outgoing += outgoing;
                                 // Dedup: only camera1 for free zone cars
                                 if (zoneName === 'free' && camId === 'camera1') {
                                     zoneStats[zoneName].cars += cars;
                                 }
                                 if (zoneName === 'paid') {
+                                    zoneStats[zoneName].cars += cars;
+                                }
+                                if (zoneName === 'road') {
                                     zoneStats[zoneName].cars += cars;
                                 }
                             }
@@ -312,6 +345,7 @@ class ParkingMonitor {
                 this.updateAggregateStats(totalSpaces, totalOccupied, totalCars, totalWrong, currentMode);
                 this.updateZoneStats('free', zoneStats.free, currentMode);
                 this.updateZoneStats('paid', zoneStats.paid, currentMode);
+                this.updateZoneStats('road', zoneStats.road, currentMode);
                 this.updateOverviewCards(zoneStats, currentMode);
                 this.updateNavBadges(zoneStats);
             }
@@ -432,6 +466,8 @@ class ParkingMonitor {
         const cars = stats.cars_detected || 0;
         const wrong = stats.wrong_count || 0;
         const suspicious = stats.suspicious_count || 0;
+        const incoming = stats.incoming_count || 0;
+        const outgoing = stats.outgoing_count || 0;
         const connected = stats.ue5_connected || false;
         const isCarCounter = stats.mode === 'car_counter';
 
@@ -440,8 +476,11 @@ class ParkingMonitor {
         this.updateStatValue(cam.carsEl, cars);
         if (cam.wrongEl) this.updateStatValue(cam.wrongEl, isCarCounter ? '-' : wrong);
         if (cam.suspiciousEl) this.updateStatValue(cam.suspiciousEl, suspicious);
+        this.updateStatValue(cam.incomingEl, incoming);
+        this.updateStatValue(cam.outgoingEl, outgoing);
+        this.updateStatValue(cam.trafficTotalEl, incoming + outgoing);
 
-        const occupiedCard = cam.occupiedEl.closest('.camera-stat-card');
+        const occupiedCard = cam.occupiedEl ? cam.occupiedEl.closest('.camera-stat-card') : null;
         if (occupiedCard) {
             occupiedCard.style.opacity = isCarCounter ? '0.4' : '1';
         }
@@ -467,12 +506,14 @@ class ParkingMonitor {
             cam.statusBadge.className = 'camera-status offline';
         }
 
-        if (available === 0) {
-            cam.availableEl.style.color = '#ef4444';
-        } else if (available <= 3) {
-            cam.availableEl.style.color = '#eab308';
-        } else {
-            cam.availableEl.style.color = '#22c55e';
+        if (cam.availableEl) {
+            if (available === 0) {
+                cam.availableEl.style.color = '#ef4444';
+            } else if (available <= 3) {
+                cam.availableEl.style.color = '#eab308';
+            } else {
+                cam.availableEl.style.color = '#22c55e';
+            }
         }
     }
 
@@ -516,7 +557,7 @@ class ParkingMonitor {
         if (!els) return;
 
         const isCarCounter = mode === 'car_counter';
-        const { available, occupied, total, cars, wrong, suspicious } = stats;
+        const { available, occupied, total, cars, wrong, suspicious, incoming, outgoing } = stats;
 
         this.updateStatValue(els.available, available);
         this.updateStatValue(els.occupied, isCarCounter ? '-' : occupied);
@@ -524,6 +565,8 @@ class ParkingMonitor {
         this.updateStatValue(els.cars, cars);
         if (els.wrong) this.updateStatValue(els.wrong, isCarCounter ? '-' : wrong);
         if (els.suspicious) this.updateStatValue(els.suspicious, suspicious);
+        if (els.incoming) this.updateStatValue(els.incoming, incoming);
+        if (els.outgoing) this.updateStatValue(els.outgoing, outgoing);
 
         const occupancyPct = total > 0 ? Math.round((occupied / total) * 100) : 0;
         if (els.occupancyPercent) {
@@ -576,6 +619,9 @@ class ParkingMonitor {
                 this.updateStatValue(els.suspicious, stats.suspicious);
                 els.suspicious.style.color = stats.suspicious > 0 ? '#ef4444' : '';
             }
+            if (els.incoming) this.updateStatValue(els.incoming, stats.incoming);
+            if (els.outgoing) this.updateStatValue(els.outgoing, stats.outgoing);
+            if (els.total) this.updateStatValue(els.total, stats.incoming + stats.outgoing);
 
             // Mini progress bar
             const pct = stats.total > 0 ? Math.round((stats.occupied / stats.total) * 100) : 0;
@@ -601,7 +647,8 @@ class ParkingMonitor {
         for (const [zoneName, stats] of Object.entries(zoneStats)) {
             const badge = this.navBadges[zoneName];
             if (badge) {
-                this.updateStatValue(badge, stats.available);
+                // Road zone shows total traffic count, parking zones show available
+                this.updateStatValue(badge, zoneName === 'road' ? (stats.incoming + stats.outgoing) : stats.available);
             }
         }
     }
