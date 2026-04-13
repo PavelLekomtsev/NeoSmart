@@ -15,6 +15,9 @@ numpy>=1.24.0
 ultralytics>=8.0.0
 cvzone>=1.6.1
 
+# Tracking (SORT)
+filterpy>=1.4.5
+
 # Screen Capture (Windows)
 mss>=9.0.0
 pywin32>=306

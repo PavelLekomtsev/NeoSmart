@@ -41,6 +41,8 @@ class ParkingMonitor {
                 carsEl: document.getElementById(`${camId}-cars`),
                 wrongEl: document.getElementById(`${camId}-wrong`),
                 wrongCard: document.getElementById(`${camId}-wrong-card`),
+                suspiciousEl: document.getElementById(`${camId}-suspicious`),
+                suspiciousCard: document.getElementById(`${camId}-suspicious-card`),
                 originalImage: new Image(),
                 processedImage: new Image(),
             };
@@ -75,6 +77,8 @@ class ParkingMonitor {
                 cars: document.getElementById('paid-zone-cars'),
                 wrong: document.getElementById('paid-zone-wrong'),
                 wrongCard: document.getElementById('paid-zone-wrong-card'),
+                suspicious: document.getElementById('paid-zone-suspicious'),
+                suspiciousCard: document.getElementById('paid-zone-suspicious-card'),
                 progressFill: document.getElementById('paid-zone-progress-fill'),
                 occupancyPercent: document.getElementById('paid-zone-occupancy-percent'),
             }
@@ -92,6 +96,7 @@ class ParkingMonitor {
                 available: document.getElementById('overview-paid-available'),
                 occupied: document.getElementById('overview-paid-occupied'),
                 cars: document.getElementById('overview-paid-cars'),
+                suspicious: document.getElementById('overview-paid-suspicious'),
                 progress: document.getElementById('overview-paid-progress'),
             }
         };
@@ -247,7 +252,7 @@ class ParkingMonitor {
                 // Per-zone accumulators
                 const zoneStats = {};
                 for (const zoneName of Object.keys(this.zones)) {
-                    zoneStats[zoneName] = { available: 0, occupied: 0, cars: 0, wrong: 0, total: 0 };
+                    zoneStats[zoneName] = { available: 0, occupied: 0, cars: 0, wrong: 0, suspicious: 0, total: 0 };
                 }
 
                 for (const camId of this.cameraIds) {
@@ -278,11 +283,14 @@ class ParkingMonitor {
                         if (stats.ue5_connected) anyConnected = true;
 
                         // Accumulate into zone stats
+                        const suspicious = stats.suspicious_count || 0;
+
                         for (const [zoneName, zoneDef] of Object.entries(this.zones)) {
                             if (zoneDef.cameras.includes(camId)) {
                                 zoneStats[zoneName].total += spaces;
                                 zoneStats[zoneName].occupied += occupied;
                                 zoneStats[zoneName].wrong += wrong;
+                                zoneStats[zoneName].suspicious += suspicious;
                                 // Dedup: only camera1 for free zone cars
                                 if (zoneName === 'free' && camId === 'camera1') {
                                     zoneStats[zoneName].cars += cars;
@@ -423,6 +431,7 @@ class ParkingMonitor {
         const occupied = stats.occupied || 0;
         const cars = stats.cars_detected || 0;
         const wrong = stats.wrong_count || 0;
+        const suspicious = stats.suspicious_count || 0;
         const connected = stats.ue5_connected || false;
         const isCarCounter = stats.mode === 'car_counter';
 
@@ -430,6 +439,7 @@ class ParkingMonitor {
         this.updateStatValue(cam.occupiedEl, isCarCounter ? '-' : occupied);
         this.updateStatValue(cam.carsEl, cars);
         if (cam.wrongEl) this.updateStatValue(cam.wrongEl, isCarCounter ? '-' : wrong);
+        if (cam.suspiciousEl) this.updateStatValue(cam.suspiciousEl, suspicious);
 
         const occupiedCard = cam.occupiedEl.closest('.camera-stat-card');
         if (occupiedCard) {
@@ -440,6 +450,12 @@ class ParkingMonitor {
             cam.wrongCard.style.opacity = isCarCounter ? '0.4' : '1';
             if (cam.wrongEl) {
                 cam.wrongEl.style.color = (!isCarCounter && wrong > 0) ? '#ef4444' : '';
+            }
+        }
+
+        if (cam.suspiciousCard) {
+            if (cam.suspiciousEl) {
+                cam.suspiciousEl.style.color = suspicious > 0 ? '#ef4444' : '';
             }
         }
 
@@ -500,13 +516,14 @@ class ParkingMonitor {
         if (!els) return;
 
         const isCarCounter = mode === 'car_counter';
-        const { available, occupied, total, cars, wrong } = stats;
+        const { available, occupied, total, cars, wrong, suspicious } = stats;
 
         this.updateStatValue(els.available, available);
         this.updateStatValue(els.occupied, isCarCounter ? '-' : occupied);
         this.updateStatValue(els.total, total);
         this.updateStatValue(els.cars, cars);
         if (els.wrong) this.updateStatValue(els.wrong, isCarCounter ? '-' : wrong);
+        if (els.suspicious) this.updateStatValue(els.suspicious, suspicious);
 
         const occupancyPct = total > 0 ? Math.round((occupied / total) * 100) : 0;
         if (els.occupancyPercent) {
@@ -525,6 +542,11 @@ class ParkingMonitor {
             els.wrongCard.style.opacity = isCarCounter ? '0.4' : '1';
             if (els.wrong) {
                 els.wrong.style.color = (!isCarCounter && wrong > 0) ? '#ef4444' : '';
+            }
+        }
+        if (els.suspiciousCard) {
+            if (els.suspicious) {
+                els.suspicious.style.color = suspicious > 0 ? '#ef4444' : '';
             }
         }
 
@@ -550,6 +572,10 @@ class ParkingMonitor {
             this.updateStatValue(els.available, stats.available);
             this.updateStatValue(els.occupied, isCarCounter ? '-' : stats.occupied);
             this.updateStatValue(els.cars, stats.cars);
+            if (els.suspicious) {
+                this.updateStatValue(els.suspicious, stats.suspicious);
+                els.suspicious.style.color = stats.suspicious > 0 ? '#ef4444' : '';
+            }
 
             // Mini progress bar
             const pct = stats.total > 0 ? Math.round((stats.occupied / stats.total) * 100) : 0;

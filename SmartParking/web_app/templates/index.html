@@ -113,6 +113,10 @@
                                 <span class="zone-mini-stat-label">Cars</span>
                                 <span class="zone-mini-stat-value" id="overview-paid-cars">-</span>
                             </div>
+                            <div class="zone-mini-stat">
+                                <span class="zone-mini-stat-label">Suspicious</span>
+                                <span class="zone-mini-stat-value" id="overview-paid-suspicious" style="color: var(--accent-red)">-</span>
+                            </div>
                         </div>
                         <div class="zone-mini-progress">
                             <div class="zone-mini-progress-fill" id="overview-paid-progress"></div>
@@ -538,6 +542,17 @@
                                 <span class="camera-stat-value" id="camera3-wrong">-</span>
                             </div>
                         </div>
+                        <div class="camera-stat-card" id="camera3-suspicious-card">
+                            <div class="camera-stat-icon suspicious-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                </svg>
+                            </div>
+                            <div class="camera-stat-info">
+                                <span class="camera-stat-label">Suspicious</span>
+                                <span class="camera-stat-value" id="camera3-suspicious">-</span>
+                            </div>
+                        </div>
                     </div>
                 </section>
 
@@ -596,6 +611,17 @@
                         <div class="stat-info">
                             <span class="stat-label">Wrong</span>
                             <span class="stat-value" id="paid-zone-wrong">-</span>
+                        </div>
+                    </div>
+                    <div class="stat-card" id="paid-zone-suspicious-card">
+                        <div class="stat-icon suspicious-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                        </div>
+                        <div class="stat-info">
+                            <span class="stat-label">Suspicious</span>
+                            <span class="stat-value" id="paid-zone-suspicious">-</span>
                         </div>
                     </div>
                 </div>
