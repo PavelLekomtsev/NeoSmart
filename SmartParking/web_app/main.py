@@ -46,12 +46,13 @@ templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
 FRAMES_DIR = Path("E:/Work/Computer_Vision/Projects/NeoSmart/SmartParking/frames")
 
-CAMERA_IDS = ["camera1", "camera2", "camera3"]
+CAMERA_IDS = ["camera1", "camera2", "camera3", "camera4"]
 
 FRAME_PATHS = {
     "camera1": FRAMES_DIR / "camera1.png",
     "camera2": FRAMES_DIR / "camera2.png",
     "camera3": FRAMES_DIR / "camera3.png",
+    "camera4": FRAMES_DIR / "camera4.png",
 }
 
 
@@ -163,24 +164,21 @@ async def receive_frame(request: Request):
                 "hint": "Check that Export Render Target in UE5 is working"
             }, status_code=404)
 
-        # Retry imread up to 5 times (UE5 may be writing the file)
+        # Retry imread up to 10 times (UE5 may be writing the file)
         frame = None
-        for _ in range(5):
+        for _ in range(10):
             try:
                 frame = cv2.imread(str(frame_path))
             except PermissionError:
-                time.sleep(0.03)
+                time.sleep(0.05)
                 continue
             if frame is not None:
                 break
-            time.sleep(0.03)
+            time.sleep(0.05)
 
         if frame is None:
-            print(f"[FRAME] Failed to decode: camera_id='{camera_id}', path='{frame_path}', exists={frame_path.exists()}")
-            return JSONResponse({
-                "error": "Failed to decode image file",
-                "path": str(frame_path)
-            }, status_code=400)
+            # File is being written by UE5 — not an error, just skip this frame
+            return {"status": "skipped", "camera_id": camera_id, "reason": "file_busy"}
 
         storage = frame_storages[camera_id]
         storage.current_frame = frame

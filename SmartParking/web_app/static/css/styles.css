@@ -16,6 +16,8 @@
     --zone-free-bg: rgba(34, 197, 94, 0.1);
     --zone-paid-color: #f59e0b;
     --zone-paid-bg: rgba(245, 158, 11, 0.1);
+    --zone-road-color: #3b82f6;
+    --zone-road-bg: rgba(59, 130, 246, 0.1);
 }
 
 * {
@@ -814,6 +816,10 @@ body {
     border-left-color: var(--zone-paid-color);
 }
 
+.zone-summary-card.zone-road {
+    border-left-color: var(--zone-road-color);
+}
+
 .zone-summary-header {
     display: flex;
     justify-content: space-between;
@@ -842,6 +848,11 @@ body {
 .zone-indicator--paid {
     background: var(--zone-paid-color);
     box-shadow: 0 0 8px rgba(245, 158, 11, 0.4);
+}
+
+.zone-indicator--road {
+    background: var(--zone-road-color);
+    box-shadow: 0 0 8px rgba(59, 130, 246, 0.4);
 }
 
 .zone-summary-title h2 {
@@ -933,6 +944,10 @@ body {
 
 #view-paid .camera-section {
     border-top: 2px solid var(--zone-paid-color);
+}
+
+#view-road .camera-section {
+    border-top: 2px solid var(--zone-road-color);
 }
 
 /* Paid Zone Extras (future panels) */

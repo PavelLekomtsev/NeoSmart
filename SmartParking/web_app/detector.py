@@ -34,6 +34,7 @@ class ParkingDetector:
     # Per-camera default threshold overrides
     OUTSIDE_THRESHOLD_PER_CAMERA = {
         "camera2": 31,
+        "camera3": 36,
     }
 
     # Per-camera edge polygon indices (fish-eye distortion → higher threshold)
@@ -42,15 +43,18 @@ class ParkingDetector:
     EDGE_INDICES = {
         "camera1": lambda n: {0, 1, n - 2, n - 1},
         "camera2": lambda n: {n - 2, n - 1},
-        "camera3": lambda n: {0, 1, n - 2, n - 1},
     }
 
     # Per-camera per-index threshold overrides (takes priority over edge/default)
     OUTSIDE_THRESHOLD_OVERRIDES = {
         "camera1": lambda n: {0: 52, 1: 52},
+        "camera3": lambda n: {0: 46, 1: 46},
     }
 
-    CAMERA_IDS = ["camera1", "camera2", "camera3"]
+    CAMERA_IDS = ["camera1", "camera2", "camera3", "camera4"]
+
+    # Road cameras (traffic counting, no parking spaces)
+    ROAD_CAMERA_IDS = ["camera4"]
 
     # Cameras that use SORT tracking (paid zone only)
     TRACKING_CAMERA_IDS = ["camera3"]
@@ -62,6 +66,19 @@ class ParkingDetector:
 
     # Suspicious parking: time threshold in seconds
     SUSPICIOUS_TIME_THRESHOLD = 30
+
+    # Traffic counting: SORT parameters for road cameras
+    TRAFFIC_SORT_MAX_AGE = 50      # keep tracks alive longer (cars may be briefly occluded)
+    TRAFFIC_SORT_MIN_HITS = 0      # show track on creation frame (hit_streak>=0 is always true)
+    TRAFFIC_SORT_IOU_THRESHOLD = 0.15  # lenient matching to survive detection gaps
+
+    # Fallback crossing regions (used only if no calibration pickle exists)
+    CROSSING_REGIONS_FALLBACK = {
+        "camera4": {
+            "incoming": [[400, 350], [600, 350], [600, 380], [400, 380]],
+            "outgoing": [[400, 450], [600, 450], [600, 480], [400, 480]],
+        }
+    }
 
     def __init__(self, model_path: str = None):
         """
@@ -78,7 +95,7 @@ class ParkingDetector:
 
         self.model = YOLO(model_path)
         self.class_names = ["car"]
-        self.confidence = 0.8
+        self.confidence = 0.65
 
         # Per-camera polygons and stats
         self.camera_polygons = {}
@@ -86,6 +103,20 @@ class ParkingDetector:
         self.camera_stats = {}
 
         for cam_id in self.CAMERA_IDS:
+            # Road cameras don't have parking spaces
+            if cam_id in self.ROAD_CAMERA_IDS:
+                self.camera_polygons[cam_id] = []
+                self.camera_total_spaces[cam_id] = 0
+                self.camera_stats[cam_id] = {
+                    "total_spaces": 0,
+                    "occupied": 0,
+                    "available": 0,
+                    "cars_detected": 0,
+                    "wrong_count": 0
+                }
+                print(f"Road camera {cam_id} initialized (traffic counting only)")
+                continue
+
             polygons = []
             cam_file = parking_dir / f"{cam_id}_parkings.p"
             fallback_file = parking_dir / "polygons.p"
@@ -136,6 +167,8 @@ class ParkingDetector:
         # SORT trackers only for paid zone cameras
         self.camera_trackers = {}
         self.camera_track_times = {}  # {cam_id: {track_id: first_seen_timestamp}}
+        self.camera_display_ids = {}  # {cam_id: {sort_id: display_id}}
+        self.camera_next_display_id = {}  # {cam_id: next_id}
         for cam_id in self.TRACKING_CAMERA_IDS:
             self.camera_trackers[cam_id] = Sort(
                 max_age=self.SORT_MAX_AGE,
@@ -143,7 +176,52 @@ class ParkingDetector:
                 iou_threshold=self.SORT_IOU_THRESHOLD
             )
             self.camera_track_times[cam_id] = {}
+            self.camera_display_ids[cam_id] = {}
+            self.camera_next_display_id[cam_id] = 1
         print(f"SORT trackers initialized for {self.TRACKING_CAMERA_IDS} (suspicious threshold: {self.SUSPICIOUS_TIME_THRESHOLD}s)")
+
+        # SORT trackers for traffic counting (road cameras)
+        self.traffic_trackers = {}
+        self.traffic_display_ids = {}
+        self.traffic_next_display_id = {}
+        self.traffic_crossed = {}   # {cam_id: {"incoming": set(), "outgoing": set()}}
+        self.traffic_counts = {}    # {cam_id: {"incoming": int, "outgoing": int}}
+        self.traffic_flash_times = {}  # {cam_id: {"incoming": timestamp, "outgoing": timestamp}}
+        for cam_id in self.ROAD_CAMERA_IDS:
+            self.traffic_trackers[cam_id] = Sort(
+                max_age=self.TRAFFIC_SORT_MAX_AGE,
+                min_hits=self.TRAFFIC_SORT_MIN_HITS,
+                iou_threshold=self.TRAFFIC_SORT_IOU_THRESHOLD
+            )
+            self.traffic_display_ids[cam_id] = {}
+            self.traffic_next_display_id[cam_id] = 1
+            self.traffic_crossed[cam_id] = {"incoming": set(), "outgoing": set()}
+            self.traffic_counts[cam_id] = {"incoming": 0, "outgoing": 0}
+            self.traffic_flash_times[cam_id] = {"incoming": 0.0, "outgoing": 0.0}
+        # Load crossing regions from pickle or use fallback
+        traffic_dir = base_dir.parent / "TrafficCounting"
+        self.crossing_regions = {}
+        for cam_id in self.ROAD_CAMERA_IDS:
+            crossing_file = traffic_dir / f"{cam_id}_crossing.p"
+            if crossing_file.exists():
+                try:
+                    with open(crossing_file, "rb") as f:
+                        data = pickle.load(f)
+                    self.crossing_regions[cam_id] = {
+                        "incoming": data["incoming"],
+                        "outgoing": data["outgoing"],
+                    }
+                    print(f"Loaded crossing regions for {cam_id} from {crossing_file}")
+                except Exception as e:
+                    print(f"Warning: Could not load {crossing_file}: {e}")
+                    self.crossing_regions[cam_id] = self.CROSSING_REGIONS_FALLBACK.get(cam_id, {})
+            else:
+                self.crossing_regions[cam_id] = self.CROSSING_REGIONS_FALLBACK.get(cam_id, {})
+                print(f"No calibration for {cam_id}, using fallback regions. "
+                      f"Run TrafficCounting/mark_crossing_regions.py to calibrate.")
+
+        if self.ROAD_CAMERA_IDS:
+            print(f"Traffic trackers initialized for {self.ROAD_CAMERA_IDS}")
 
     def set_mode(self, mode: str):
         """Set detection mode."""
@@ -389,51 +467,64 @@ class ParkingDetector:
         """
         tracker = self.camera_trackers[camera_id]
         track_times = self.camera_track_times[camera_id]
-        # track_times stores {track_id: (start_time, spot_index)}
+        display_ids = self.camera_display_ids[camera_id]
+        # track_times stores {display_id: (start_time, spot_index)}
         now = time.time()
 
         dets = self._convert_detections_for_sort(object_list)
         tracks = tracker.update(dets)
 
-        active_ids = set()
+        active_display_ids = set()
         suspicious_count = 0
 
         for track in tracks:
-            x1, y1, x2, y2, track_id = track
-            x1, y1, x2, y2, track_id = int(x1), int(y1), int(x2), int(y2), int(track_id)
-            active_ids.add(track_id)
+            x1, y1, x2, y2, sort_id = track
+            x1, y1, x2, y2, sort_id = int(x1), int(y1), int(x2), int(y2), int(sort_id)
+
+            # Map internal SORT ID to sequential display ID
+            if sort_id not in display_ids:
+                display_ids[sort_id] = self.camera_next_display_id[camera_id]
+                self.camera_next_display_id[camera_id] += 1
+            display_id = display_ids[sort_id]
+            active_display_ids.add(display_id)
 
             center = ((x1 + x2) // 2, (y1 + y2) // 2)
             spot_index = self._get_parking_spot_index(center, camera_id)
 
             if spot_index >= 0:
                 # Car is in a parking spot
-                if track_id in track_times:
-                    prev_time, prev_spot = track_times[track_id]
+                if display_id in track_times:
+                    prev_time, prev_spot = track_times[display_id]
                     if prev_spot != spot_index:
                         # Changed spot — reset timer
-                        track_times[track_id] = (now, spot_index)
+                        track_times[display_id] = (now, spot_index)
                 else:
                     # First time entering a spot
-                    track_times[track_id] = (now, spot_index)
+                    track_times[display_id] = (now, spot_index)
 
-                start_time, _ = track_times[track_id]
+                start_time, _ = track_times[display_id]
                 elapsed = now - start_time
                 is_suspicious = elapsed >= self.SUSPICIOUS_TIME_THRESHOLD
 
                 if is_suspicious:
                     suspicious_count += 1
 
-                self._draw_track_info(img, x1, y1, x2, y2, track_id, elapsed, is_suspicious)
+                self._draw_track_info(img, x1, y1, x2, y2, display_id, elapsed, is_suspicious)
             else:
                 # Car is not in any spot — show ID only, reset timer
-                track_times.pop(track_id, None)
-                self._draw_track_id(img, x1, y1, x2, y2, track_id)
+                track_times.pop(display_id, None)
+                self._draw_track_id(img, x1, y1, x2, y2, display_id)
 
         # Clean up tracks that are no longer active
-        stale_ids = [tid for tid in track_times if tid not in active_ids]
+        stale_ids = [tid for tid in track_times if tid not in active_display_ids]
         for tid in stale_ids:
             del track_times[tid]
+
+        # Clean up stale display ID mappings
+        active_sort_ids = {int(t[4]) for t in tracks}
+        stale_sort_ids = [sid for sid in display_ids if sid not in active_sort_ids]
+        for sid in stale_sort_ids:
+            del display_ids[sid]
 
         return len(tracks), suspicious_count
 
@@ -447,24 +538,160 @@ class ParkingDetector:
 
     def _draw_track_info(self, img: np.ndarray, x1: int, y1: int, x2: int, y2: int,
                          track_id: int, elapsed: float, is_suspicious: bool):
-        """Draw tracking ID + parked duration. Blue = normal, Red = suspicious."""
+        """Draw tracking ID + parked duration. Suspicious info in a box to the right of bbox."""
         minutes = int(elapsed) // 60
         seconds = int(elapsed) % 60
         time_str = f"{minutes}:{seconds:02d}" if minutes > 0 else f"{seconds}s"
 
         if is_suspicious:
             color = (0, 0, 255)  # Red
-            label = f"ID:{track_id} {time_str} SUSPICIOUS"
         else:
             color = (255, 0, 0)  # Blue
-            label = f"ID:{track_id} {time_str}"
 
+        # ID label below bbox
         label_y = y2 + 20 if y2 + 20 < img.shape[0] - 10 else y1 - 10
-        cvzone.putTextRect(img, label, (max(0, x1), label_y),
+        cvzone.putTextRect(img, f"ID:{track_id} {time_str}", (max(0, x1), label_y),
                            scale=0.8, thickness=1,
                            colorR=color, colorT=(255, 255, 255))
 
         cv2.rectangle(img, (x1, y1), (x2, y2), color, 3)
+
+        # Suspicious box to the right of bbox
+        if is_suspicious:
+            box_x = x2 + 5
+            box_y = y1
+            overtime = elapsed - self.SUSPICIOUS_TIME_THRESHOLD
+            ot_min = int(overtime) // 60
+            ot_sec = int(overtime) % 60
+            ot_str = f"{ot_min}:{ot_sec:02d}" if ot_min > 0 else f"{ot_sec}s"
+            line1 = "SUSPICIOUS"
+            line2 = f"+{ot_str}"
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            font_scale = 0.5
+            thickness = 1
+            (w1, h1), _ = cv2.getTextSize(line1, font, font_scale, thickness)
+            (w2, h2), _ = cv2.getTextSize(line2, font, font_scale, thickness)
+            box_w = max(w1, w2) + 12
+            box_h = h1 + h2 + 18
+            # Clamp to image bounds
+            img_h, img_w = img.shape[:2]
+            if box_x + box_w > img_w:
+                box_x = x1 - box_w - 5
+            if box_y + box_h > img_h:
+                box_y = img_h - box_h
+            if box_x < 0:
+                box_x = 0
+            if box_y < 0:
+                box_y = 0
+            # Background
+            cv2.rectangle(img, (box_x, box_y), (box_x + box_w, box_y + box_h), (0, 0, 180), -1)
+            cv2.rectangle(img, (box_x, box_y), (box_x + box_w, box_y + box_h), (0, 0, 255), 2)
+            # Text
+            cv2.putText(img, line1, (box_x + 6, box_y + h1 + 5), font, font_scale, (255, 255, 255), thickness)
+            cv2.putText(img, line2, (box_x + 6, box_y + h1 + h2 + 13), font, font_scale, (255, 255, 255), thickness)
+
+    def _update_traffic_tracking(self, img: np.ndarray, object_list: list,
+                                  camera_id: str) -> dict:
+        """
+        Run SORT tracker for traffic counting.
+        Counts cars crossing two directional regions.
+
+        Returns:
+            {"incoming": int, "outgoing": int}
+        """
+        tracker = self.traffic_trackers[camera_id]
+        display_ids = self.traffic_display_ids[camera_id]
+        crossed = self.traffic_crossed[camera_id]
+        flash_times = self.traffic_flash_times[camera_id]
+        regions = self.crossing_regions.get(camera_id, {})
+        now = time.time()
+
+        dets = self._convert_detections_for_sort(object_list)
+        tracks = tracker.update(dets)
+
+        # Prepare region polygons
+        region_arrays = {}
+        for direction, pts in regions.items():
+            region_arrays[direction] = np.array(pts, np.int32).reshape(-1, 1, 2)
+
+        active_sort_ids = set()
+
+        for track in tracks:
+            x1, y1, x2, y2, sort_id = track
+            x1, y1, x2, y2, sort_id = int(x1), int(y1), int(x2), int(y2), int(sort_id)
+            active_sort_ids.add(sort_id)
+
+            # Map to sequential display ID
+            if sort_id not in display_ids:
+                display_ids[sort_id] = self.traffic_next_display_id[camera_id]
+                self.traffic_next_display_id[camera_id] += 1
+            display_id = display_ids[sort_id]
+
+            w, h = x2 - x1, y2 - y1
+            center = (x1 + w // 2, y1 + h // 2)
+
+            # Draw center point (used for crossing detection)
+            cv2.circle(img, center, 4, (0, 255, 255), -1)
+
+            # Check crossing for each direction
+            for direction, poly_np in region_arrays.items():
+                if cv2.pointPolygonTest(poly_np, center, False) >= 0:
+                    if display_id not in crossed[direction]:
+                        crossed[direction].add(display_id)
+                        self.traffic_counts[camera_id][direction] += 1
+                        flash_times[direction] = now
+
+            # Small ID badge inside bbox (bottom-right corner)
+            id_text = str(display_id)
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            (tw, th), _ = cv2.getTextSize(id_text, font, 0.45, 1)
+            pad = 3
+            bx = x2 - tw - pad * 2
+            by = y2 - th - pad * 2
+            cv2.rectangle(img, (bx, by), (x2, y2), (40, 40, 40), -1)
+            cv2.putText(img, id_text, (bx + pad, y2 - pad), font, 0.45, (255, 255, 255), 1)
+
+        # Clean up stale display ID mappings
+        stale_sort_ids = [sid for sid in display_ids if sid not in active_sort_ids]
+        for sid in stale_sort_ids:
+            del display_ids[sid]
+
+        # Draw crossing regions (flash red for 1s on new crossing)
+        flash_duration = 1.0
+        for direction, poly_np in region_arrays.items():
+            count = self.traffic_counts[camera_id][direction]
+            is_flashing = (now - flash_times.get(direction, 0)) < flash_duration
+
+            if is_flashing:
+                region_color = (0, 0, 255)  # Red flash
+                alpha = 0.5
+            elif direction == "incoming":
+                region_color = (0, 200, 0)  # Green
+                alpha = 0.25
+            else:
+                region_color = (0, 100, 255)  # Orange
+                alpha = 0.25
+
+            label = f"{'Incoming' if direction == 'incoming' else 'Outgoing'}: {count}"
+
+            overlay = img.copy()
+            cv2.fillPoly(overlay, [poly_np], region_color)
+            cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0, img)
+            cv2.polylines(img, [poly_np], True, region_color, 2)
+
+            # Label near the region
+            centroid = poly_np.mean(axis=0).astype(int)[0]
+            cvzone.putTextRect(img, label, (centroid[0] - 60, centroid[1] - 20),
+                               scale=0.7, thickness=1,
+                               colorR=region_color, colorT=(255, 255, 255))
+
+        # Draw total count
+        total = self.traffic_counts[camera_id]["incoming"] + self.traffic_counts[camera_id]["outgoing"]
+        cvzone.putTextRect(img, f"Total Traffic: {total}", (20, 40),
+                           scale=1, thickness=2,
+                           colorR=(50, 50, 50), colorT=(255, 255, 255))
+
+        return self.traffic_counts[camera_id]
 
     def process_frame(self, img: np.ndarray, camera_id: str = "camera1") -> tuple[np.ndarray, dict]:
         """
@@ -497,6 +724,13 @@ class ParkingDetector:
         if camera_id in self.TRACKING_CAMERA_IDS:
             tracked_count, suspicious_count = self._update_tracking(img, object_list, camera_id)
 
+        # Run traffic counting (road cameras)
+        incoming_count, outgoing_count = 0, 0
+        if camera_id in self.ROAD_CAMERA_IDS:
+            traffic = self._update_traffic_tracking(img, object_list, camera_id)
+            incoming_count = traffic["incoming"]
+            outgoing_count = traffic["outgoing"]
+
         stats = {
             "total_spaces": total_spaces,
             "occupied": occupied,
@@ -505,6 +739,8 @@ class ParkingDetector:
             "wrong_count": wrong_count,
             "tracked_count": tracked_count,
             "suspicious_count": suspicious_count,
+            "incoming_count": incoming_count,
+            "outgoing_count": outgoing_count,
             "mode": self.mode
         }
         self.camera_stats[camera_id] = stats
