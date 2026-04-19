@@ -1,0 +1,3 @@
+[submodule "SmartParking/PlateScanner"]
+	path = SmartParking/PlateScanner
+	url = https://github.com/encore-ecosystem/PlateScanner.git

@@ -4,13 +4,17 @@
 
 class ParkingMonitor {
     constructor() {
-        this.cameraIds = ['camera1', 'camera2', 'camera3', 'camera4'];
+        this.cameraIds = ['camera1', 'camera2', 'camera3', 'camera4', 'camera5', 'camera6'];
+
+        // Barrier camera IDs
+        this.barrierCameraIds = ['camera5', 'camera6'];
 
         // Zone definitions
         this.zones = {
             free: { cameras: ['camera1', 'camera2'], label: 'Free Parking' },
             paid: { cameras: ['camera3'], label: 'Paid Parking' },
-            road: { cameras: ['camera4'], label: 'Road Traffic' }
+            road: { cameras: ['camera4'], label: 'Road Traffic' },
+            barrier: { cameras: ['camera5', 'camera6'], label: 'Barrier Control' }
         };
 
         // Current active view
@@ -21,7 +25,9 @@ class ParkingMonitor {
             overview: document.getElementById('view-overview'),
             free: document.getElementById('view-free'),
             paid: document.getElementById('view-paid'),
-            road: document.getElementById('view-road')
+            road: document.getElementById('view-road'),
+            barrier: document.getElementById('view-barrier'),
+            access: document.getElementById('view-access')
         };
 
         // Per-camera elements
@@ -91,7 +97,8 @@ class ParkingMonitor {
                 incoming: document.getElementById('road-zone-incoming'),
                 outgoing: document.getElementById('road-zone-outgoing'),
                 total: document.getElementById('road-zone-total'),
-            }
+            },
+            barrier: {}  // Barrier stats handled separately
         };
 
         // Overview card elements
@@ -113,6 +120,12 @@ class ParkingMonitor {
                 incoming: document.getElementById('overview-road-incoming'),
                 outgoing: document.getElementById('overview-road-outgoing'),
                 total: document.getElementById('overview-road-total'),
+            },
+            barrier: {
+                state: document.getElementById('overview-barrier-state'),
+                entries: document.getElementById('overview-barrier-entries'),
+                denied: document.getElementById('overview-barrier-denied'),
+                plate: document.getElementById('overview-barrier-plate'),
             }
         };
 
@@ -121,7 +134,35 @@ class ParkingMonitor {
             free: document.getElementById('free-zone-count'),
             paid: document.getElementById('paid-zone-count'),
             road: document.getElementById('road-zone-count'),
+            barrier: document.getElementById('barrier-zone-count'),
         };
+
+        // Barrier-specific UI elements (entry)
+        this.barrierUI = {
+            stateIndicator: document.getElementById('barrier-state-indicator'),
+            position: document.getElementById('barrier-position'),
+            lastPlate: document.getElementById('barrier-last-plate'),
+            confidence: document.getElementById('barrier-confidence'),
+            accessResult: document.getElementById('barrier-access-result'),
+            todayEntries: document.getElementById('barrier-today-entries'),
+            todayDenied: document.getElementById('barrier-today-denied'),
+            todayInside: document.getElementById('barrier-today-inside'),
+            logBody: document.getElementById('barrier-log-body'),
+            platesList: document.getElementById('barrier-plates-list'),
+        };
+
+        // Manual barrier control buttons (entry)
+        const btnOpen = document.getElementById('barrier-manual-open');
+        const btnClose = document.getElementById('barrier-manual-close');
+        if (btnOpen) btnOpen.addEventListener('click', () => this.sendBarrierCommand('entry', 'manual_open'));
+        if (btnClose) btnClose.addEventListener('click', () => this.sendBarrierCommand('entry', 'manual_close'));
+
+        // Plate management
+        const btnAdd = document.getElementById('barrier-add-plate');
+        if (btnAdd) btnAdd.addEventListener('click', () => this.addPlate());
+
+        // Load plates on init
+        this.loadPlates();
 
         // Connection status
         this.connectionStatus = document.getElementById('connection-status');
@@ -290,8 +331,8 @@ class ParkingMonitor {
                         const wrong = stats.wrong_count || 0;
                         const cars = stats.cars_detected || 0;
 
-                        // Road cameras don't contribute to parking totals
-                        if (camId !== 'camera4') {
+                        // Road and barrier cameras don't contribute to parking totals
+                        if (camId !== 'camera4' && !this.barrierCameraIds.includes(camId)) {
                             totalSpaces += spaces;
                             totalOccupied += occupied;
                             totalWrong += wrong;
@@ -303,6 +344,11 @@ class ParkingMonitor {
                             if (camId === 'camera3') {
                                 totalCars += cars;
                             }
+                        }
+
+                        // Handle barrier data (entry barrier from camera5 or camera6)
+                        if (this.barrierCameraIds.includes(camId) && stats.barrier) {
+                            this.updateBarrierUI(stats.barrier);
                         }
 
                         if (stats.mode) currentMode = stats.mode;
@@ -646,10 +692,14 @@ class ParkingMonitor {
     updateNavBadges(zoneStats) {
         for (const [zoneName, stats] of Object.entries(zoneStats)) {
             const badge = this.navBadges[zoneName];
-            if (badge) {
-                // Road zone shows total traffic count, parking zones show available
-                this.updateStatValue(badge, zoneName === 'road' ? (stats.incoming + stats.outgoing) : stats.available);
-            }
+            if (!badge) continue;
+            // Barrier badge is driven by updateBarrierUI() (entries + denied).
+            // Skip here so we don't clobber it with stats.available (= 0 for a
+            // zone with no parking polygons), which was causing the badge to
+            // flicker between the correct count and 0 twice per frame.
+            if (zoneName === 'barrier') continue;
+            // Road zone shows total traffic count, parking zones show available
+            this.updateStatValue(badge, zoneName === 'road' ? (stats.incoming + stats.outgoing) : stats.available);
         }
     }
 
@@ -702,6 +752,253 @@ class ParkingMonitor {
             this.fullscreenCanvas.height = sourceImage.naturalHeight;
             this.fullscreenCtx.drawImage(sourceImage, 0, 0);
         }
+    }
+
+    // --- Barrier Control ---
+
+    updateBarrierUI(barrierData) {
+        const ui = this.barrierUI;
+        if (!ui || !barrierData) return;
+
+        // State indicator
+        const state = barrierData.state || 'idle';
+        if (ui.stateIndicator) {
+            const stateDisplay = state.replace(/_/g, ' ').toUpperCase();
+            ui.stateIndicator.textContent = stateDisplay;
+
+            // Remove all state classes and add current
+            ui.stateIndicator.className = 'barrier-state-indicator';
+            const stateClassMap = {
+                'idle': 'state-idle',
+                'car_approaching': 'state-approaching',
+                'reading_plate': 'state-reading',
+                'access_granted': 'state-granted',
+                'access_denied': 'state-denied',
+                'barrier_opening': 'state-opening',
+                'car_passing': 'state-passing',
+                'barrier_closing': 'state-closing',
+            };
+            const cls = stateClassMap[state] || 'state-idle';
+            ui.stateIndicator.classList.add(cls);
+        }
+
+        // Position
+        if (ui.position) {
+            const pos = (barrierData.barrier_position || 'closed').toUpperCase();
+            ui.position.textContent = pos;
+            ui.position.style.color = pos === 'OPEN' ? 'var(--accent-green)' : (pos === 'CLOSED' ? 'var(--accent-red)' : 'var(--accent-yellow)');
+        }
+
+        // Last plate
+        if (ui.lastPlate) {
+            ui.lastPlate.textContent = barrierData.last_plate || '---';
+        }
+
+        // Confidence
+        if (ui.confidence) {
+            const conf = barrierData.last_plate_confidence;
+            ui.confidence.textContent = conf > 0 ? (conf * 100).toFixed(0) + '%' : '-';
+        }
+
+        // Access result
+        if (ui.accessResult) {
+            const result = barrierData.access_result || 'none';
+            ui.accessResult.textContent = result.toUpperCase();
+            if (result === 'granted' || result === 'manual_override') {
+                ui.accessResult.style.color = 'var(--accent-green)';
+            } else if (result === 'denied') {
+                ui.accessResult.style.color = 'var(--accent-red)';
+            } else {
+                ui.accessResult.style.color = 'var(--text-secondary)';
+            }
+        }
+
+        // Today stats
+        const today = barrierData.today_stats || {};
+        this.updateStatValue(ui.todayEntries, today.entries || 0);
+        this.updateStatValue(ui.todayDenied, today.denied || 0);
+        this.updateStatValue(ui.todayInside, today.currently_inside || 0);
+
+        // Update overview barrier card
+        const ovr = this.overviewElements.barrier;
+        if (ovr) {
+            this.updateStatValue(ovr.state, state.replace(/_/g, ' ').toUpperCase());
+            this.updateStatValue(ovr.entries, today.entries || 0);
+            this.updateStatValue(ovr.denied, today.denied || 0);
+            if (ovr.plate) ovr.plate.textContent = barrierData.last_plate || '---';
+        }
+
+        // Nav badge
+        const totalBarrierEvents = (today.entries || 0) + (today.denied || 0);
+        this.updateStatValue(this.navBadges.barrier, totalBarrierEvents);
+
+        // Access log
+        const events = barrierData.recent_events || [];
+        this.renderAccessLog(events);
+    }
+
+    renderAccessLog(events) {
+        const tbody = this.barrierUI.logBody;
+        if (!tbody) return;
+
+        if (!events.length) {
+            tbody.innerHTML = '<tr><td colspan="6" class="barrier-log-empty">No events yet</td></tr>';
+            return;
+        }
+
+        let html = '';
+        for (const ev of events) {
+            const time = ev.timestamp ? ev.timestamp.split('T')[1] || ev.timestamp : '-';
+            const resultClass = ev.result === 'granted' ? 'result-granted' :
+                               ev.result === 'denied' ? 'result-denied' : 'result-manual';
+            const conf = ev.confidence ? (ev.confidence * 100).toFixed(0) + '%' : '-';
+            const owner = ev.owner || (ev.result === 'denied' ? 'Unknown' : '-');
+            html += `<tr>
+                <td>${time}</td>
+                <td>${ev.barrier_id || '-'}</td>
+                <td class="barrier-plate-mono">${ev.plate || '-'}</td>
+                <td>${this.escapeHtml(owner)}</td>
+                <td>${conf}</td>
+                <td class="${resultClass}">${(ev.result || '-').toUpperCase()}</td>
+            </tr>`;
+        }
+        tbody.innerHTML = html;
+    }
+
+    escapeHtml(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    sendBarrierCommand(barrierId, command) {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            this.ws.send(JSON.stringify({
+                type: 'barrier_command',
+                barrier_id: barrierId,
+                command: command
+            }));
+            console.log('Barrier command sent:', barrierId, command);
+        }
+    }
+
+    async addPlate() {
+        const plateInput = document.getElementById('barrier-new-plate');
+        const ownerInput = document.getElementById('barrier-new-owner');
+        const descInput = document.getElementById('barrier-new-desc');
+        const plate = (plateInput.value || '').trim().toUpperCase();
+        const owner = (ownerInput.value || '').trim();
+        const desc = (descInput ? descInput.value || '' : '').trim();
+
+        if (!plate) return;
+
+        try {
+            const resp = await fetch('/api/barrier/plates', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    plate_number: plate,
+                    owner_name: owner,
+                    vehicle_description: desc,
+                })
+            });
+            if (resp.ok) {
+                plateInput.value = '';
+                ownerInput.value = '';
+                if (descInput) descInput.value = '';
+                this.loadPlates();
+            }
+        } catch (e) {
+            console.error('Failed to add plate:', e);
+        }
+    }
+
+    async savePlateEdit(plate) {
+        const row = document.querySelector(`.barrier-plate-item[data-plate="${plate}"]`);
+        if (!row) return;
+        const owner = row.querySelector('.barrier-plate-edit-owner').value.trim();
+        const desc = row.querySelector('.barrier-plate-edit-desc').value.trim();
+        try {
+            const resp = await fetch(`/api/barrier/plates/${encodeURIComponent(plate)}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ owner_name: owner, vehicle_description: desc })
+            });
+            if (resp.ok) this.loadPlates();
+        } catch (e) {
+            console.error('Failed to update plate:', e);
+        }
+    }
+
+    togglePlateEdit(plate) {
+        const row = document.querySelector(`.barrier-plate-item[data-plate="${plate}"]`);
+        if (!row) return;
+        row.classList.toggle('editing');
+    }
+
+    async removePlate(plate) {
+        try {
+            const resp = await fetch(`/api/barrier/plates/${encodeURIComponent(plate)}`, {
+                method: 'DELETE'
+            });
+            if (resp.ok) {
+                this.loadPlates();
+            }
+        } catch (e) {
+            console.error('Failed to remove plate:', e);
+        }
+    }
+
+    async loadPlates() {
+        try {
+            const resp = await fetch('/api/barrier/plates');
+            if (!resp.ok) return;
+            const plates = await resp.json();
+            this.renderPlatesList(plates);
+        } catch (e) {
+            // Server might not be ready yet
+        }
+    }
+
+    renderPlatesList(plates) {
+        const container = this.barrierUI.platesList;
+        if (!container) return;
+
+        if (!plates.length) {
+            container.innerHTML = '<p style="color: var(--text-secondary); font-size: 0.85rem;">No plates registered</p>';
+            return;
+        }
+
+        const esc = (s) => this.escapeHtml(s);
+        let html = '';
+        for (const p of plates) {
+            const plate = p.plate_number;
+            const owner = p.owner_name || '';
+            const desc = p.vehicle_description || '';
+            html += `<div class="barrier-plate-item" data-plate="${esc(plate)}">
+                <div class="barrier-plate-item-view">
+                    <div class="barrier-plate-item-info">
+                        <span class="barrier-plate-item-number">${esc(plate)}</span>
+                        <span class="barrier-plate-item-owner">${esc(owner || 'No owner')}</span>
+                        ${desc ? `<span class="barrier-plate-item-desc">${esc(desc)}</span>` : ''}
+                    </div>
+                    <div class="barrier-plate-item-actions">
+                        <button class="barrier-btn barrier-btn-edit" onclick="window.parkingMonitor.togglePlateEdit('${esc(plate)}')">Edit</button>
+                        <button class="barrier-btn barrier-btn-remove" onclick="window.parkingMonitor.removePlate('${esc(plate)}')">Remove</button>
+                    </div>
+                </div>
+                <div class="barrier-plate-item-edit">
+                    <span class="barrier-plate-item-number">${esc(plate)}</span>
+                    <input type="text" class="barrier-plate-edit-owner" value="${esc(owner)}" placeholder="Owner name" maxlength="50">
+                    <input type="text" class="barrier-plate-edit-desc" value="${esc(desc)}" placeholder="Vehicle description" maxlength="80">
+                    <div class="barrier-plate-item-actions">
+                        <button class="barrier-btn barrier-btn-add" onclick="window.parkingMonitor.savePlateEdit('${esc(plate)}')">Save</button>
+                        <button class="barrier-btn barrier-btn-remove" onclick="window.parkingMonitor.togglePlateEdit('${esc(plate)}')">Cancel</button>
+                    </div>
+                </div>
+            </div>`;
+        }
+        container.innerHTML = html;
     }
 }
 
