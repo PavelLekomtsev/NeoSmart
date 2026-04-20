@@ -1,0 +1,31 @@
+# exp/03 — cosine LR schedule with warmup + early stopping.
+#
+# Keeps exp/02 augmentations (they are cheap wins) and swaps the LR
+# policy: cosine annealing, 3-epoch warmup, longer horizon with
+# patience-based early stopping so the run terminates when val mAP
+# plateaus instead of burning compute.
+#
+# Run:
+#   python Training/train.py \
+#       --exp-name exp03_cosine_lr_warmup \
+#       --overrides config/experiments/03_lr_schedule.yaml
+
+tags: ["exp03", "lr-schedule"]
+
+epochs: 150
+patience: 20
+
+cos_lr: true
+lr0: 0.01
+lrf: 0.001
+warmup_epochs: 3.0
+
+# carried over from exp/02
+mosaic: 1.0
+mixup: 0.15
+copy_paste: 0.10
+hsv_h: 0.02
+hsv_s: 0.8
+hsv_v: 0.5
+translate: 0.15
+scale: 0.6

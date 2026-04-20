@@ -1,0 +1,25 @@
+# exp/02 — aggressive augmentations.
+#
+# Hypothesis: on synthetic top-down footage the model is prone to
+# overfit per-scene lighting and car placement. Mixup/copy-paste/
+# stronger HSV should improve generalisation without touching data
+# volume. Everything else stays at the baseline to isolate the effect.
+#
+# Run:
+#   python Training/train.py \
+#       --exp-name exp02_aug_mosaic_mixup \
+#       --overrides config/experiments/02_aug_mosaic_mixup.yaml
+
+tags: ["exp02", "augmentation"]
+
+mosaic: 1.0
+mixup: 0.15
+copy_paste: 0.10
+
+hsv_h: 0.02
+hsv_s: 0.8
+hsv_v: 0.5
+
+translate: 0.15
+scale: 0.6
+fliplr: 0.5

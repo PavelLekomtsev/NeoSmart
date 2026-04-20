@@ -1,0 +1,36 @@
+# exp/04 — optimizer study: AdamW in place of default SGD/auto.
+#
+# Keeps the exp/02 augmentations and exp/03 LR policy as the "best so
+# far" and swaps the optimizer. AdamW typically wants ~10x smaller lr0
+# and a larger weight decay than SGD — both are set below. Goal: check
+# whether the schedule generalises across optimizers or if a particular
+# combination materially beats SGD + cosine.
+#
+# Architecture/input unchanged: yolov8s, imgsz=640.
+#
+# Run:
+#   python Training/train.py \
+#       --exp-name exp04_optimizer_adamw \
+#       --overrides config/experiments/04_optimizer_adamw.yaml
+
+tags: ["exp04", "optimizer"]
+
+epochs: 150
+patience: 20
+
+optimizer: AdamW
+lr0: 0.001
+lrf: 0.01
+weight_decay: 0.01
+warmup_epochs: 3.0
+cos_lr: true
+
+# carried over from exp/02 (aggressive augmentations)
+mosaic: 1.0
+mixup: 0.15
+copy_paste: 0.10
+hsv_h: 0.02
+hsv_s: 0.8
+hsv_v: 0.5
+translate: 0.15
+scale: 0.6

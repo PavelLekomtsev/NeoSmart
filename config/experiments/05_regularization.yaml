@@ -1,0 +1,44 @@
+# exp/05 — regularisation + extended geometric augmentation.
+#
+# Builds on the best policy from exp/02–04 (aug + cosine LR + AdamW)
+# and adds label smoothing, stronger weight decay, and modest
+# rotation/shear/perspective. Motivation: with synthetic training data
+# the detector sees a narrow distribution of car orientations and
+# scene lighting; mild geometric jitter + smoothed labels should bias
+# toward flatter loss surface and better small-object recall without
+# making boxes degenerate.
+#
+# Architecture/input unchanged: yolov8s, imgsz=640.
+#
+# Run:
+#   python Training/train.py \
+#       --exp-name exp05_regularization \
+#       --overrides config/experiments/05_regularization.yaml
+
+tags: ["exp05", "regularization"]
+
+epochs: 150
+patience: 20
+
+optimizer: AdamW
+lr0: 0.001
+lrf: 0.01
+weight_decay: 0.02          # bumped from exp/04's 0.01
+warmup_epochs: 3.0
+cos_lr: true
+
+label_smoothing: 0.1
+
+# extended augmentation on top of exp/02
+mosaic: 1.0
+mixup: 0.15
+copy_paste: 0.10
+hsv_h: 0.025
+hsv_s: 0.8
+hsv_v: 0.5
+translate: 0.20
+scale: 0.7
+degrees: 5.0               # small rotation
+shear: 2.0                 # subtle shear
+perspective: 0.0005        # slight perspective
+fliplr: 0.5

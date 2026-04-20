@@ -67,6 +67,11 @@ def parse_args() -> argparse.Namespace:
         help="YAML config with training defaults.",
     )
     p.add_argument(
+        "--overrides",
+        default=None,
+        help="Optional YAML with per-experiment overrides merged on top of --config.",
+    )
+    p.add_argument(
         "--exp-name",
         required=True,
         help="ClearML task name + Ultralytics run folder.",
@@ -107,6 +112,15 @@ _OVERRIDE_KEYS = (
 def load_config(path: Path, args: argparse.Namespace) -> dict[str, Any]:
     with path.open() as f:
         cfg: dict[str, Any] = yaml.safe_load(f)
+    if args.overrides:
+        ov_path = Path(args.overrides).resolve()
+        with ov_path.open() as f:
+            overrides: dict[str, Any] = yaml.safe_load(f) or {}
+        # Tags merge as union; scalar keys are replaced.
+        if overrides.get("tags"):
+            cfg["tags"] = list(dict.fromkeys(cfg.get("tags", []) + overrides["tags"]))
+            overrides.pop("tags")
+        cfg.update(overrides)
     for key in _OVERRIDE_KEYS:
         v = getattr(args, key, None)
         if v is not None:

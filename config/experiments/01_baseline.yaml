@@ -1,0 +1,16 @@
+# exp/01 — baseline. Reproduces the reference Car_Detector.pt setup.
+#
+# Purpose: establish a ClearML-tracked reference point that all later
+# experiments are compared against. No knobs touched relative to the
+# default Ultralytics schedule on top of config/training.yaml.
+#
+# Run:
+#   python Training/train.py \
+#       --exp-name exp01_baseline_yolov8s_100ep \
+#       --overrides config/experiments/01_baseline.yaml
+
+tags: ["exp01", "baseline"]
+
+# All hyperparameters inherit from config/training.yaml:
+#   model=yolov8s.pt, epochs=100, imgsz=640, batch=16, patience=0,
+#   cos_lr=false, mosaic=1.0, mixup=0.0, copy_paste=0.0.
