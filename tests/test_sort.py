@@ -55,15 +55,21 @@ def test_iou_half_overlap_matches_expected() -> None:
 
 
 def test_associate_matches_overlapping_pair_leaves_the_outlier_unmatched() -> None:
-    detections = np.array([
-        [0.0, 0.0, 10.0, 10.0],
-        [100.0, 100.0, 110.0, 110.0],
-    ])
-    trackers = np.array([
-        [0.0, 0.0, 10.0, 10.0],
-    ])
+    detections = np.array(
+        [
+            [0.0, 0.0, 10.0, 10.0],
+            [100.0, 100.0, 110.0, 110.0],
+        ]
+    )
+    trackers = np.array(
+        [
+            [0.0, 0.0, 10.0, 10.0],
+        ]
+    )
     matches, unmatched_dets, unmatched_trks = associate_detections_to_trackers(
-        detections, trackers, iou_threshold=0.3,
+        detections,
+        trackers,
+        iou_threshold=0.3,
     )
     assert matches.shape == (1, 2)
     assert tuple(matches[0]) == (0, 0)
@@ -89,10 +95,12 @@ def test_single_stationary_box_keeps_stable_id_across_frames() -> None:
 
 def test_two_disjoint_boxes_get_two_distinct_ids() -> None:
     sort = Sort(max_age=1, min_hits=1, iou_threshold=0.3)
-    dets = np.array([
-        [100.0, 100.0, 200.0, 200.0, 0.9],
-        [400.0, 400.0, 500.0, 500.0, 0.9],
-    ])
+    dets = np.array(
+        [
+            [100.0, 100.0, 200.0, 200.0, 0.9],
+            [400.0, 400.0, 500.0, 500.0, 0.9],
+        ]
+    )
     # Warm-up frame — trackers are created but not all are emitted yet
     # depending on initialization order. Run once to stabilize, then check.
     sort.update(dets)

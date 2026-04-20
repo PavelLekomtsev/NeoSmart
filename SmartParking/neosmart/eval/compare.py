@@ -95,8 +95,7 @@ def load_gt(label_file: Path, img_w: int, img_h: int) -> np.ndarray:
             parts = line.strip().split()
             if len(parts) < 5:
                 continue
-            cx, cy, w, h = (float(parts[1]), float(parts[2]),
-                            float(parts[3]), float(parts[4]))
+            cx, cy, w, h = (float(parts[1]), float(parts[2]), float(parts[3]), float(parts[4]))
             x1 = (cx - w / 2) * img_w
             y1 = (cy - h / 2) * img_h
             x2 = (cx + w / 2) * img_w
@@ -163,9 +162,7 @@ def evaluate_model(
     labels_dir = data_dir / "labels"
 
     if image_paths is None:
-        image_paths = sorted(
-            list(images_dir.glob("*.jpg")) + list(images_dir.glob("*.png"))
-        )
+        image_paths = sorted(list(images_dir.glob("*.jpg")) + list(images_dir.glob("*.png")))
     result = EvaluationResult(
         model_name=model_name or Path(model_path).stem,
     )
@@ -190,10 +187,14 @@ def evaluate_model(
         result.fp += fp
         result.fn += fn
         result.confidences.extend(float(c) for c in pred_conf)
-        result.per_image.append({
-            "image": img_path.name,
-            "tp": tp, "fp": fp, "fn": fn,
-            "n_gt": int(len(gt)),
-            "n_pred": int(len(pred_boxes)),
-        })
+        result.per_image.append(
+            {
+                "image": img_path.name,
+                "tp": tp,
+                "fp": fp,
+                "fn": fn,
+                "n_gt": int(len(gt)),
+                "n_pred": int(len(pred_boxes)),
+            }
+        )
     return result

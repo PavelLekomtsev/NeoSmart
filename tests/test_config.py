@@ -89,9 +89,7 @@ class TestResolveThreshold:
         assert wp.resolve_threshold("camera1", 10, total_polygons=12) == 45
         assert wp.resolve_threshold("camera1", 11, total_polygons=12) == 45
 
-    def test_middle_polygon_falls_through_to_default(
-        self, wp: WrongParkingSettings
-    ) -> None:
+    def test_middle_polygon_falls_through_to_default(self, wp: WrongParkingSettings) -> None:
         # camera1 middle polygons have no rule → global default.
         assert wp.resolve_threshold("camera1", 5, total_polygons=12) == 25
 

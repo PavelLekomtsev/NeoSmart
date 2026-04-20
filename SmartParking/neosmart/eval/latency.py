@@ -79,6 +79,7 @@ def benchmark(
     sort_tracker = None
     if include_sort:
         from neosmart.tracking.sort import Sort
+
         sort_tracker = Sort()
 
     for i in range(runs):
@@ -91,10 +92,12 @@ def benchmark(
 
         t1 = time.perf_counter()
         if results and results[0].boxes is not None and len(results[0].boxes):
-            pred = np.hstack([
-                results[0].boxes.xyxy.cpu().numpy(),
-                results[0].boxes.conf.cpu().numpy().reshape(-1, 1),
-            ])
+            pred = np.hstack(
+                [
+                    results[0].boxes.xyxy.cpu().numpy(),
+                    results[0].boxes.conf.cpu().numpy().reshape(-1, 1),
+                ]
+            )
         else:
             pred = np.zeros((0, 5), dtype=np.float32)
         t_post = time.perf_counter() - t1

@@ -155,7 +155,8 @@ def frame() -> np.ndarray:
 
 
 def test_idle_to_approaching_when_car_enters_approach_zone(
-    controller: BarrierController, frame: np.ndarray,
+    controller: BarrierController,
+    frame: np.ndarray,
 ) -> None:
     assert controller.state == STATE_IDLE
     controller.process_frame(frame, [CAR_IN_APPROACH])
@@ -163,7 +164,8 @@ def test_idle_to_approaching_when_car_enters_approach_zone(
 
 
 def test_approaching_to_reading_when_car_reaches_reading_zone(
-    controller: BarrierController, frame: np.ndarray,
+    controller: BarrierController,
+    frame: np.ndarray,
 ) -> None:
     controller.process_frame(frame, [CAR_IN_APPROACH])
     controller.process_frame(frame, [CAR_IN_READING])
@@ -171,7 +173,9 @@ def test_approaching_to_reading_when_car_reaches_reading_zone(
 
 
 def test_approaching_returns_to_idle_after_timeout_when_car_leaves(
-    controller: BarrierController, frame: np.ndarray, clock: FakeClock,
+    controller: BarrierController,
+    frame: np.ndarray,
+    clock: FakeClock,
 ) -> None:
     """If a car enters the approach zone but leaves without progressing to
     the reading zone, the controller waits 3 s of empty-approach before
@@ -231,10 +235,10 @@ def test_full_happy_path_whitelisted_plate(
     assert controller.state == STATE_CAR_PASSING
 
     # 6. After grace, still empty safety zone for >= SAFETY_ZONE_CLEAR_DELAY
-    clock.advance(3.1)                                   # past grace
+    clock.advance(3.1)  # past grace
     controller.update_safety([])
-    controller.process_frame(frame, [])                 # safety_clear_time set
-    clock.advance(1.1)                                  # past clear delay
+    controller.process_frame(frame, [])  # safety_clear_time set
+    clock.advance(1.1)  # past clear delay
     controller.update_safety([])
     controller.process_frame(frame, [])
     assert controller.state == STATE_BARRIER_CLOSING
@@ -263,7 +267,9 @@ def test_reading_decides_with_best_reading_when_car_leaves_before_consensus(
     # Queue one reading for a plate that is NOT whitelisted → DENIED.
     recognizer.queue(_reading("UNKNOWN1"))
 
-    controller.process_frame(frame, [CAR_IN_READING])  # idle → reading (skips approach; idle jumps straight to reading if car is already there)
+    controller.process_frame(
+        frame, [CAR_IN_READING]
+    )  # idle → reading (skips approach; idle jumps straight to reading if car is already there)
     assert controller.state == STATE_READING_PLATE
     controller.process_frame(frame, [CAR_IN_READING])  # accumulate one reading
     assert len(controller.ocr_buffer) == 1
@@ -294,7 +300,8 @@ def test_access_denied_returns_to_idle_after_timeout(
 
 
 def test_manual_open_goes_directly_to_barrier_opening(
-    controller: BarrierController, frame: np.ndarray,
+    controller: BarrierController,
+    frame: np.ndarray,
 ) -> None:
     """Operator override from the dashboard bypasses plate recognition and
     the approach/reading flow entirely — used for guest entries and when

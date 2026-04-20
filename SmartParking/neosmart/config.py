@@ -121,9 +121,7 @@ class WrongParkingSettings(BaseModel):
     edge_polygon_rules: dict[str, EdgeRule] = Field(default_factory=dict)
     index_overrides: dict[str, list[IndexOverride]] = Field(default_factory=dict)
 
-    def resolve_threshold(
-        self, camera_id: str, polygon_index: int, total_polygons: int
-    ) -> int:
+    def resolve_threshold(self, camera_id: str, polygon_index: int, total_polygons: int) -> int:
         """Resolve the 'bbox outside polygon' threshold for a spot.
 
         Precedence:
@@ -193,9 +191,7 @@ class AppSettings(BaseSettings):
 
     @field_validator("cameras")
     @classmethod
-    def _validate_cameras(
-        cls, v: dict[str, CameraSettings]
-    ) -> dict[str, CameraSettings]:
+    def _validate_cameras(cls, v: dict[str, CameraSettings]) -> dict[str, CameraSettings]:
         if not v:
             return v
         tracking_roles = {"parking"}
@@ -242,11 +238,7 @@ class AppSettings(BaseSettings):
 
     @property
     def barrier_camera_ids(self) -> list[str]:
-        return [
-            c
-            for c, s in self.cameras.items()
-            if s.role in ("barrier_plate", "barrier_safety")
-        ]
+        return [c for c, s in self.cameras.items() if s.role in ("barrier_plate", "barrier_safety")]
 
     @property
     def tracking_camera_ids(self) -> list[str]:

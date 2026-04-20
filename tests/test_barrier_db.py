@@ -189,7 +189,7 @@ def test_seed_from_json_populates_empty_table(tmp_path: Path) -> None:
 
     seed = [
         {"plate_number": "SEED001", "owner_name": "Alice", "vehicle_description": "a"},
-        {"plate_number": "SEED002", "owner_name": "Bob",   "vehicle_description": "b"},
+        {"plate_number": "SEED002", "owner_name": "Bob", "vehicle_description": "b"},
     ]
     seed_file = tmp_path / "seed_plates.json"
     seed_file.write_text(json.dumps(seed), encoding="utf-8")

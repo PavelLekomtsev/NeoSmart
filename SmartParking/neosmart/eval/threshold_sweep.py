@@ -45,15 +45,22 @@ def sweep(
     points: list[SweepPoint] = []
     for c in values:
         r = evaluate_model(
-            model_path, data_dir, conf_thresh=c, iou_thresh=iou_thresh,
+            model_path,
+            data_dir,
+            conf_thresh=c,
+            iou_thresh=iou_thresh,
         )
-        points.append(SweepPoint(
-            conf=float(c),
-            precision=r.precision,
-            recall=r.recall,
-            f1=r.f1,
-            tp=r.tp, fp=r.fp, fn=r.fn,
-        ))
+        points.append(
+            SweepPoint(
+                conf=float(c),
+                precision=r.precision,
+                recall=r.recall,
+                f1=r.f1,
+                tp=r.tp,
+                fp=r.fp,
+                fn=r.fn,
+            )
+        )
     return points
 
 

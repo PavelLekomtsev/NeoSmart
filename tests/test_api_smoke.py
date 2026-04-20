@@ -79,6 +79,7 @@ def test_stats_returns_per_camera_and_aggregate(client: TestClient) -> None:
 
     # Every configured camera must appear in the response, plus aggregate.
     import main as main_module
+
     for cam_id in main_module.CAMERA_IDS:
         assert cam_id in data, f"missing camera: {cam_id}"
 

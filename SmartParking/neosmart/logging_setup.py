@@ -78,9 +78,7 @@ def configure_logging(settings: AppSettings | None = None) -> None:
     if s.logging.json_to_file:
         logs_dir = s.paths.resolve(s.paths.logs_dir)
         logs_dir.mkdir(parents=True, exist_ok=True)
-        file_handler = logging.FileHandler(
-            logs_dir / "neosmart.jsonl", encoding="utf-8"
-        )
+        file_handler = logging.FileHandler(logs_dir / "neosmart.jsonl", encoding="utf-8")
         file_handler.setLevel(logging.DEBUG)
         file_handler.setFormatter(JsonLineFormatter())
         root.addHandler(file_handler)
