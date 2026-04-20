@@ -1,0 +1,67 @@
+# Git
+.git
+.gitignore
+.gitmodules
+.gitattributes
+
+# IDE / editor
+.idea
+.vscode
+.claude
+*.swp
+
+# Python artifacts
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+htmlcov
+.venv
+venv
+
+# Assets we never want baked into the image:
+# - Models/ is large and host-mounted as a read-only volume.
+# - Training/data/ and Validation/data/ are synthetic datasets.
+# - Training/runs/ are ClearML / Ultralytics run outputs.
+# - logs/ is a host bind-mount at runtime.
+Models
+Training/data
+Training/runs
+Training/raw
+Training/output_images
+Training/yolo*.pt
+Validation/data
+Validation/reports
+logs
+
+# UE5-produced frames are mounted as a volume; don't ship whatever
+# happens to be sitting there at build time.
+SmartParking/frames/*.png
+SmartParking/frames/*.jpg
+
+# Runtime SQLite state (mounted as a named volume)
+SmartParking/web_app/data/*.db
+SmartParking/web_app/data/*.db-journal
+
+# Notebook artifacts — .py is the source of truth
+notebooks/*.ipynb
+notebooks/.ipynb_checkpoints
+notebooks/Documentation
+
+# Tests and dev-only infra — don't live in the runtime image.
+tests
+.pre-commit-config.yaml
+.github
+docker-compose.clearml.yml
+.clearml.conf
+.clearml.conf.example
+
+# Secrets
+.env
+
+# Docs — large, not needed in the runtime image.
+Documentation

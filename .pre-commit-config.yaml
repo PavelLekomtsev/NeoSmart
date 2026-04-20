@@ -1,0 +1,43 @@
+# Pre-commit hooks for NeoSmart.
+#
+# First-time install (one-off, per clone):
+#   pip install -r SmartParking/requirements-dev.txt
+#   pre-commit install
+#
+# Manual full-repo run (handy after a big rewrite):
+#   pre-commit run --all-files
+#
+# Versions are pinned to match SmartParking/requirements-dev.txt so the
+# hook and the developer CLI agree on formatter output.
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.4
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/kynan/nbstripout
+    rev: 0.8.1
+    hooks:
+      # Notebook source of truth is .py (see notebooks/build_ipynb.py);
+      # when a stray .ipynb is staged, strip the outputs before commit
+      # to keep diffs reviewable.
+      - id: nbstripout
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-yaml
+        # docker-compose files use tags from allegroai/clearml that
+        # the default parser occasionally tags as "unsafe"; rely on
+        # the CI pipeline to validate the compose files themselves.
+        args: [--unsafe]
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-added-large-files
+        args: [--maxkb=1000]
+      - id: check-merge-conflict
+      - id: mixed-line-ending
+        args: [--fix=lf]

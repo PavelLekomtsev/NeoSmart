@@ -1,0 +1,51 @@
+# NeoSmart web app — single service, all runtime state mounted in.
+#
+# Stand up:  docker compose up -d
+# Logs:      docker compose logs -f web
+# Stop:      docker compose down
+# Rebuild:   docker compose up -d --build
+#
+# Prerequisites on the host (not inside the container):
+#   - git submodule update --init --recursive   (PlateScanner weights)
+#   - Models/Car_Detector.pt and Models/plate_scanner/ populated
+#
+# The ClearML stack lives in docker-compose.clearml.yml and is
+# intentionally separate — the web app doesn't depend on it at runtime.
+
+services:
+  web:
+    build: .
+    image: neosmart:latest
+    container_name: neosmart-web
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # Point logging at the bind-mounted host directory so logs
+      # survive container restarts.
+      NEOSMART_PATHS__LOGS_DIR: /app/logs
+      NEOSMART_LOGGING__LEVEL: INFO
+    volumes:
+      # UE5 writes frames here from the host; the container consumes them.
+      # Read-only so a container bug can't clobber the source-of-truth.
+      - ./SmartParking/frames:/app/SmartParking/frames:ro
+
+      # Model weights are too large for the image and get updated
+      # independently (new YOLO checkpoint = no rebuild).
+      - ./Models:/app/Models:ro
+
+      # Interactive-calibration pickles produced on the host.
+      # Mounted read-only so the container can't corrupt them.
+      - ./SmartParking/CarParkingSpace:/app/SmartParking/CarParkingSpace:ro
+      - ./SmartParking/BarrierSystem:/app/SmartParking/BarrierSystem:ro
+      - ./SmartParking/TrafficCounting:/app/SmartParking/TrafficCounting:ro
+
+      # Structured logs on the host for post-mortem debugging.
+      - ./logs:/app/logs
+
+      # Barrier SQLite DB — named volume so `docker compose down`
+      # preserves the whitelist + access log. Wipe with `down -v`.
+      - barrier_db:/app/SmartParking/web_app/data
+
+volumes:
+  barrier_db:
