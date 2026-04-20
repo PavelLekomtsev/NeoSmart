@@ -54,7 +54,7 @@ EXPERIMENTS: tuple[Experiment, ...] = (
         id="01",
         exp_name="exp01_baseline_yolov8s_100ep",
         overrides="config/experiments/01_baseline.yaml",
-        description="Baseline reference run (yolov8s, defaults).",
+        description="Release repro of Car_Detector.pt (TrainYolo.py args + Ultralytics defaults).",
     ),
     Experiment(
         id="02",

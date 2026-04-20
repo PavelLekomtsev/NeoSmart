@@ -1,16 +1,38 @@
-# exp/01 — baseline. Reproduces the reference Car_Detector.pt setup.
+# exp/01 — reproduce the release training of Car_Detector.pt.
 #
-# Purpose: establish a ClearML-tracked reference point that all later
-# experiments are compared against. No knobs touched relative to the
-# default Ultralytics schedule on top of config/training.yaml.
+# The current production weights (Models/Car_Detector.pt) were produced
+# by a minimal Ultralytics call (the former Training/TrainYolo.py):
+#
+#     model = YOLO('yolov8s.pt')
+#     model.train(data='data2/data.yaml', epochs=100, imgsz=640)
+#
+# Nothing else was set — every other knob fell back to Ultralytics
+# defaults. This file re-enacts that call exactly so exp/01 is a
+# faithful reference point the rest of the series is measured against.
+#
+# Most fields in config/training.yaml already match either TrainYolo.py
+# or Ultralytics 8.x defaults, so this override list is short. The two
+# overrides below undo the project-level deviations (seed and patience)
+# that were introduced after the release run.
 #
 # Run:
 #   python Training/train.py \
 #       --exp-name exp01_baseline_yolov8s_100ep \
 #       --overrides config/experiments/01_baseline.yaml
 
-tags: ["exp01", "baseline"]
+tags: ["exp01", "baseline", "release-repro"]
 
-# All hyperparameters inherit from config/training.yaml:
-#   model=yolov8s.pt, epochs=100, imgsz=640, batch=16, patience=0,
-#   cos_lr=false, mosaic=1.0, mixup=0.0, copy_paste=0.0.
+# TrainYolo.py did not pass `seed` → Ultralytics defaults to 0.
+seed: 0
+
+# TrainYolo.py did not pass `patience` → Ultralytics defaults to 100.
+# (With epochs=100 this is equivalent to no early stopping, matching
+# the release run.)
+patience: 100
+
+# Everything else inherits from config/training.yaml and already
+# matches TrainYolo.py:
+#   model=yolov8s.pt, data=data2/data.yaml, epochs=100, imgsz=640,
+#   batch=16, optimizer=auto, lr0=0.01, lrf=0.01, warmup_epochs=3,
+#   cos_lr=false, mosaic=1.0, mixup=0.0, copy_paste=0.0, and the
+#   default HSV/translate/scale/fliplr augmentations.

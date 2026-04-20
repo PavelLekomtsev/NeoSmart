@@ -54,7 +54,7 @@ Fill this table after each run completes.
 
 | # | Name | Key change | mAP50 | mAP50-95 | P | R | F1@0.5 | ClearML |
 |---|------|------------|-------|----------|---|---|--------|---------|
-| 01 | baseline_yolov8s_100ep | reference | — | — | — | — | — | `<link>` |
+| 01 | baseline_yolov8s_100ep | release repro of `Car_Detector.pt` (TrainYolo.py args + defaults) | — | — | — | — | — | `<link>` |
 | 02 | aug_mosaic_mixup       | mosaic+mixup+copy-paste, stronger HSV | — | — | — | — | — | `<link>` |
 | 03 | cosine_lr_warmup       | cosine LR + warmup + early stopping | — | — | — | — | — | `<link>` |
 | 04 | optimizer_adamw        | AdamW optimizer + tuned lr/weight-decay | — | — | — | — | — | `<link>` |
@@ -68,9 +68,14 @@ previous run, whether the metric movement matched the hypothesis,
 notable failure modes in `Debug Samples`, decisions carried forward
 into the next run._
 
-### exp/01 — baseline
-_Reference point. Numbers not compared against anything; anchors the
-series._
+### exp/01 — release repro
+_Re-enacts the original training call that produced
+`Models/Car_Detector.pt` (former `Training/TrainYolo.py`): yolov8s,
+`data2/data.yaml`, 100 epochs, imgsz 640, every other knob at
+Ultralytics default. Provides a fair head-to-head baseline for the
+later runs — any improvement shown by exp/02–06 is measured against
+these numbers, not against the v1 weights (which were trained with an
+older Ultralytics release and without ClearML tracking)._
 
 ### exp/02 — aggressive augmentations
 _Hypothesis: mosaic + mixup + copy-paste + stronger HSV reduce
