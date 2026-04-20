@@ -1,0 +1,65 @@
+# NeoSmart — YOLO training defaults.
+#
+# Loaded by Training/train.py and connected to ClearML under "Configuration".
+# Override any field on the CLI:
+#
+#   python Training/train.py --exp-name exp01_baseline
+#   python Training/train.py --exp-name exp02_aug_v1 \
+#       --mosaic 1.0 --mixup 0.15 --copy-paste 0.1
+#
+# Precedence: CLI flags > this file > Ultralytics defaults.
+
+# --- ClearML bookkeeping ---------------------------------------------
+project: NeoSmart/CarDetector
+tags: ["synthetic", "car-topview"]
+
+# --- Dataset ----------------------------------------------------------
+# Path is relative to Training/ (Ultralytics reads from CWD).
+data: data2/data.yaml
+
+# --- Model ------------------------------------------------------------
+# Starting weights. exp/04 swaps this to yolov8m.pt.
+model: yolov8s.pt
+
+# --- Core training hyperparameters -----------------------------------
+epochs: 100
+imgsz: 640
+batch: 16
+patience: 0              # 0 = no early stopping; exp/03 sets this to 20.
+optimizer: auto          # Ultralytics picks SGD/AdamW based on dataset.
+workers: 8
+device: 0                # GPU index (int), "cpu", or "mps".
+seed: 42
+deterministic: true
+cache: false             # set to true if the dataset fits in RAM for a speedup.
+amp: true                # mixed precision.
+close_mosaic: 10         # disable mosaic for the last N epochs.
+
+# --- Learning rate schedule ------------------------------------------
+# Default Ultralytics schedule. exp/03 enables cosine + warmup.
+lr0: 0.01
+lrf: 0.01
+warmup_epochs: 3.0
+cos_lr: false
+
+# --- Augmentations ----------------------------------------------------
+# Default Ultralytics values. exp/02 cranks these up.
+hsv_h: 0.015
+hsv_s: 0.7
+hsv_v: 0.4
+degrees: 0.0
+translate: 0.1
+scale: 0.5
+shear: 0.0
+perspective: 0.0
+flipud: 0.0
+fliplr: 0.5
+mosaic: 1.0
+mixup: 0.0
+copy_paste: 0.0
+
+# --- Output -----------------------------------------------------------
+# Ultralytics writes runs/<project_dir>/<exp_name>/ under Training/.
+project_dir: runs
+save: true
+save_period: -1          # -1 = only save best/last.
