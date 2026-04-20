@@ -50,7 +50,6 @@ services:
     image: mongo:4.4.29
     container_name: clearml-mongo
     restart: unless-stopped
-    command: --setParameter internalQueryExecMaxBlockingSortBytes=196100200
     volumes:
       - clearml_mongo_db:/data/db
       - clearml_mongo_configdb:/data/configdb
