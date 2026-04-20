@@ -5,6 +5,19 @@ Uses YOLO for plate detection and ParseQ for text recognition.
 """
 
 import os
+
+# Silence TF/TFLite startup noise BEFORE tensorflow is imported anywhere in
+# the process (the env vars are read during TF's C++ init; setting them after
+# import has no effect). Affects only the TFLite branch, but harmless in the
+# PT path since TF isn't loaded there.
+#   TF_ENABLE_ONEDNN_OPTS=0  -> drops the "oneDNN custom operations are on" INFO.
+#   TF_CPP_MIN_LOG_LEVEL=3   -> drops INFO/WARNING/ERROR from absl (also
+#                               silences the "XNNPACK delegate for CPU" INFO
+#                               and the "All log messages before absl::Init..."
+#                               header that TF prints before its logger is up).
+os.environ.setdefault("TF_ENABLE_ONEDNN_OPTS", "0")
+os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")
+
 import sys
 import time
 import warnings
@@ -19,6 +32,15 @@ warnings.filterwarnings(
     "ignore",
     message=r".*Importing from timm\.models\.helpers is deprecated.*",
     category=FutureWarning,
+)
+
+# TF 2.20 will drop tf.lite.Interpreter in favour of the ai_edge_litert package.
+# We still use tf.lite intentionally (no extra dep for the demo path); the
+# warning is noise until the next TF major.
+warnings.filterwarnings(
+    "ignore",
+    message=r".*tf\.lite\.Interpreter is deprecated.*",
+    category=UserWarning,
 )
 
 # Setup PlateScanner environment before importing
@@ -44,7 +66,11 @@ class PlateRecognizer:
                  enhance: bool = True,
                  brightness: float = 1.35,
                  saturation: float = 1.4,
-                 eager_load: bool = True):
+                 eager_load: bool = True,
+                 use_tflite: bool = False,
+                 tflite_model_path: str = None,
+                 tflite_confidence: float = 0.01,
+                 tflite_num_threads: int = 4):
         """
         Initialize plate recognizer.
 
@@ -66,18 +92,57 @@ class PlateRecognizer:
             eager_load: If True, load OCR + warm up YOLO/parseq in __init__.
                         Avoids paying the ~10s first-call cost when a real car
                         arrives. Set False for tests where you only need detection.
+            use_tflite: If True, load the FP16 TFLite detector instead of the
+                        PyTorch .pt. Demonstrates edge-deployability but is
+                        much slower on desktop (no CUDA). Toggled at startup
+                        via `USE_TFLITE=1` env var in main.py.
+            tflite_model_path: Path to `*_float16.tflite`. Auto-discovered in
+                               Models/plate_scanner/ if None.
+            tflite_confidence: Confidence threshold for the TFLite path. Lower
+                               than the PT threshold because FP16 quantization
+                               shifts confidence values down ~5-10x for
+                               borderline detections (localization stays
+                               pixel-accurate, confidences drift).
+            tflite_num_threads: CPU threads for the TFLite interpreter.
         """
         base_dir = Path(__file__).parent.parent.parent  # NeoSmart root
 
+        self.use_tflite = use_tflite
+        self.augment = augment
+        self.match_training_aug = match_training_aug
+        self.enhance = enhance
+        self.brightness = brightness
+        self.saturation = saturation
+
+        self._rec_model = None
+        self._preprocess_fn = None
+        self._train_aug_pipeline = None
+        self._tflite_interp = None
+        self._tflite_in = None
+        self._tflite_out = None
+        self._tflite_imgsz = None
+
+        if use_tflite:
+            self.plate_confidence = tflite_confidence
+            self._tflite_num_threads = tflite_num_threads
+            self._init_tflite_detector(tflite_model_path, base_dir)
+        else:
+            self.plate_confidence = confidence
+            self._init_pt_detector(plate_model_path, base_dir)
+
+        if eager_load:
+            self._ensure_ocr_loaded()
+            self._warmup()
+
+    def _init_pt_detector(self, plate_model_path, base_dir):
+        """Load the PyTorch YOLO plate detector (production path on desktop/GPU)."""
         if plate_model_path is None:
             model_dir = base_dir / "Models" / "plate_scanner"
-            # Try to find any .pt model in the directory
             candidates = list(model_dir.glob("*.pt")) if model_dir.exists() else []
             if candidates:
                 plate_model_path = str(candidates[0])
                 print(f"[PlateScanner] Using plate model: {candidates[0].name}")
             else:
-                # Fallback to PlateScanner models directory
                 ps_models = _PLATE_SCANNER_DIR / "models"
                 candidates = list(ps_models.glob("*.pt")) if ps_models.exists() else []
                 if candidates:
@@ -88,24 +153,44 @@ class PlateRecognizer:
                         f"No plate detection model found. "
                         f"Download from PlateScanner Yandex Disk and place in {model_dir}/"
                     )
-
         self.plate_detector = YOLO(plate_model_path)
-        self.plate_confidence = confidence
-        self.augment = augment
-        self.match_training_aug = match_training_aug
-        self.enhance = enhance
-        self.brightness = brightness
-        self.saturation = saturation
+        print(f"[PlateScanner] PT plate detector loaded: {plate_model_path}")
 
-        self._rec_model = None
-        self._preprocess_fn = None
-        self._train_aug_pipeline = None
+    def _init_tflite_detector(self, tflite_model_path, base_dir):
+        """Load the FP16 TFLite plate detector (edge-deployable demo path).
 
-        print(f"[PlateScanner] Plate detector loaded: {plate_model_path}")
+        Ultralytics' own `YOLO('*.tflite')` loader misreads our exported model's
+        output coordinate space — it treats the absolute-pixel outputs as
+        normalized and rescales them to produce degenerate bboxes at the image
+        corner. So we drive the TFLite interpreter directly: we own the
+        letterbox/un-letterbox math and the NMS, matching what the .pt path
+        returns to a pixel.
+        """
+        import tensorflow as tf
 
-        if eager_load:
-            self._ensure_ocr_loaded()
-            self._warmup()
+        if tflite_model_path is None:
+            model_dir = base_dir / "Models" / "plate_scanner"
+            candidates = list(model_dir.glob("*_float16.tflite")) if model_dir.exists() else []
+            if not candidates:
+                raise FileNotFoundError(
+                    f"No *_float16.tflite found in {model_dir}. "
+                    f"Run SmartParking/BarrierSystem/convert_plate_detector_to_tflite.py first."
+                )
+            tflite_model_path = str(candidates[0])
+            print(f"[PlateScanner] Using TFLite model: {candidates[0].name}")
+
+        self._tflite_interp = tf.lite.Interpreter(
+            model_path=tflite_model_path, num_threads=self._tflite_num_threads
+        )
+        self._tflite_interp.allocate_tensors()
+        self._tflite_in = self._tflite_interp.get_input_details()[0]
+        self._tflite_out = self._tflite_interp.get_output_details()[0]
+        self._tflite_imgsz = int(self._tflite_in["shape"][1])
+        # Keep a YOLO-named attribute as None so callers that introspect don't crash.
+        self.plate_detector = None
+        print(f"[PlateScanner] TFLite FP16 plate detector loaded: "
+              f"{tflite_model_path} (imgsz={self._tflite_imgsz}, "
+              f"threads={self._tflite_num_threads}, conf_thresh={self.plate_confidence})")
 
     def enhance_frame(self, img_bgr: np.ndarray) -> np.ndarray:
         """Boost brightness + saturation in HSV space.
@@ -130,14 +215,105 @@ class PlateRecognizer:
         try:
             from PIL import Image as _Img
             dummy_bgr = np.zeros((640, 640, 3), dtype=np.uint8)
-            self.plate_detector(dummy_bgr, verbose=False, conf=self.plate_confidence)
+            if self.use_tflite:
+                self._tflite_infer(dummy_bgr)
+                detector_label = "TFLite"
+            else:
+                self.plate_detector(dummy_bgr, verbose=False, conf=self.plate_confidence)
+                detector_label = "YOLO"
             if self._rec_model is not None and self._preprocess_fn is not None:
                 dummy_pil = _Img.new("L", (128, 32))
                 preprocessed = self._preprocess_fn(dummy_pil)
                 self._rec_model("parseq", preprocessed)
-            print("[PlateScanner] Warmup complete (YOLO + parseq ready)")
+            print(f"[PlateScanner] Warmup complete ({detector_label} + parseq ready)")
         except Exception as e:
             print(f"[PlateScanner] Warmup failed (will retry on first call): {e}")
+
+    def _letterbox(self, img_bgr: np.ndarray, imgsz: int):
+        """Resize while preserving aspect ratio, pad with 114-gray to square.
+        Returns (letterboxed, scale, pad_x, pad_y) so callers can un-project the
+        detection boxes back to the original frame's coordinate space."""
+        h, w = img_bgr.shape[:2]
+        scale = imgsz / max(h, w)
+        nh, nw = int(round(h * scale)), int(round(w * scale))
+        resized = cv2.resize(img_bgr, (nw, nh), interpolation=cv2.INTER_LINEAR)
+        canvas = np.full((imgsz, imgsz, 3), 114, dtype=np.uint8)
+        pad_x = (imgsz - nw) // 2
+        pad_y = (imgsz - nh) // 2
+        canvas[pad_y:pad_y + nh, pad_x:pad_x + nw] = resized
+        return canvas, scale, pad_x, pad_y
+
+    def _tflite_infer(self, img_bgr: np.ndarray):
+        """Single-frame TFLite forward pass. Returns the raw (5, N) output."""
+        letterboxed, scale, pad_x, pad_y = self._letterbox(img_bgr, self._tflite_imgsz)
+        rgb = cv2.cvtColor(letterboxed, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
+        inp = rgb[None]  # NHWC
+        self._tflite_interp.set_tensor(self._tflite_in["index"], inp)
+        self._tflite_interp.invoke()
+        out = self._tflite_interp.get_tensor(self._tflite_out["index"])[0]  # (5, N)
+        return out, scale, pad_x, pad_y
+
+    def _detect_best_plate_pt(self, detect_input, offset_x, offset_y):
+        """Run Ultralytics YOLO on the detect_input crop and return the
+        highest-confidence box in full-frame coords, or None."""
+        results = self.plate_detector(detect_input, stream=False, verbose=False,
+                                      conf=self.plate_confidence,
+                                      augment=self.augment)
+        best_plate = None
+        best_conf = 0.0
+        for r in results:
+            for box in r.boxes:
+                conf = float(box.conf[0])
+                if conf > best_conf:
+                    px1, py1, px2, py2 = box.xyxy[0].cpu().numpy()
+                    px1, py1, px2, py2 = int(px1), int(py1), int(px2), int(py2)
+                    best_plate = {
+                        "bbox": (px1 + offset_x, py1 + offset_y,
+                                 px2 + offset_x, py2 + offset_y),
+                        "confidence": conf,
+                        "local_bbox": (px1, py1, px2, py2),
+                    }
+                    best_conf = conf
+        return best_plate
+
+    def _detect_best_plate_tflite(self, detect_input, offset_x, offset_y):
+        """TFLite inference + manual postprocessing.
+
+        We do this ourselves instead of using `YOLO('*.tflite')` because the
+        Ultralytics tflite wrapper assumes normalized-coordinate output and our
+        exported model emits absolute-pixel coordinates — the wrapper's rescale
+        produces degenerate `[W, H, W, H]` bboxes. Doing the math here keeps
+        the contract with the rest of the pipeline identical to the .pt path.
+        """
+        raw, scale, pad_x, pad_y = self._tflite_infer(detect_input)
+        confs = raw[4]
+        best_idx = int(np.argmax(confs))
+        best_conf = float(confs[best_idx])
+        if best_conf < self.plate_confidence:
+            return None
+
+        cx, cy, bw, bh = raw[0:4, best_idx]
+        # Coords are in letterboxed-image pixel space (0..imgsz). Un-pad and
+        # un-scale back to detect_input's coordinate space.
+        lx1 = (cx - bw / 2 - pad_x) / scale
+        ly1 = (cy - bh / 2 - pad_y) / scale
+        lx2 = (cx + bw / 2 - pad_x) / scale
+        ly2 = (cy + bh / 2 - pad_y) / scale
+
+        h, w = detect_input.shape[:2]
+        lx1 = int(max(0, min(w - 1, lx1)))
+        ly1 = int(max(0, min(h - 1, ly1)))
+        lx2 = int(max(0, min(w, lx2)))
+        ly2 = int(max(0, min(h, ly2)))
+        if lx2 <= lx1 or ly2 <= ly1:
+            return None
+
+        return {
+            "bbox": (lx1 + offset_x, ly1 + offset_y,
+                     lx2 + offset_x, ly2 + offset_y),
+            "confidence": best_conf,
+            "local_bbox": (lx1, ly1, lx2, ly2),
+        }
 
     def _apply_training_aug(self, img_bgr: np.ndarray) -> np.ndarray:
         """Mimic the PlateScanner training pipeline: ToGray + CLAHE.
@@ -208,33 +384,10 @@ class PlateRecognizer:
         if self.match_training_aug:
             detect_input = self._apply_training_aug(detect_input)
 
-        # Run YOLO plate detection
-        results = self.plate_detector(detect_input, stream=False, verbose=False,
-                                       conf=self.plate_confidence,
-                                       augment=self.augment)
-
-        best_plate = None
-        best_conf = 0.0
-
-        for r in results:
-            for box in r.boxes:
-                conf = float(box.conf[0])
-                if conf > best_conf:
-                    px1, py1, px2, py2 = box.xyxy[0].cpu().numpy()
-                    px1, py1, px2, py2 = int(px1), int(py1), int(px2), int(py2)
-
-                    # Convert back to full frame coordinates
-                    abs_x1 = px1 + offset_x
-                    abs_y1 = py1 + offset_y
-                    abs_x2 = px2 + offset_x
-                    abs_y2 = py2 + offset_y
-
-                    best_plate = {
-                        "bbox": (abs_x1, abs_y1, abs_x2, abs_y2),
-                        "confidence": conf,
-                        "local_bbox": (px1, py1, px2, py2),
-                    }
-                    best_conf = conf
+        if self.use_tflite:
+            best_plate = self._detect_best_plate_tflite(detect_input, offset_x, offset_y)
+        else:
+            best_plate = self._detect_best_plate_pt(detect_input, offset_x, offset_y)
 
         if best_plate is None:
             return None
@@ -264,7 +417,7 @@ class PlateRecognizer:
 
         return {
             "plate_text": plate_text,
-            "confidence": best_conf,
+            "confidence": best_plate["confidence"],
             "bbox": best_plate["bbox"],
             "plate_image": plate_crop,
         }
