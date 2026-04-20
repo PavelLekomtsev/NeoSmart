@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import pytest
-from pydantic import ValidationError
-
 from neosmart.config import (
     AppSettings,
     CameraSettings,
@@ -14,6 +12,7 @@ from neosmart.config import (
     get_settings,
     reload_settings,
 )
+from pydantic import ValidationError
 
 
 def test_default_yaml_loads() -> None:
