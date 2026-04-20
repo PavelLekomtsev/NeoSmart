@@ -10,7 +10,8 @@ the best-performing run replaces the production weights as
 
 **Invariants across the series.** All experiments use the same
 backbone (`yolov8s.pt`), the same input resolution (`imgsz=640`), the
-same dataset (`Training/data2/`), and the same seed (`42`). Only
+same dataset (`Training/data/` — UE5-rendered synthetic frames), and
+the same seed (`42`). Only
 hyperparameters, optimizer, LR schedule, regularisation, and
 augmentations are varied. This isolates the effect of training-time
 choices from architectural ones and keeps the live-inference pipeline
@@ -71,7 +72,7 @@ into the next run._
 ### exp/01 — release repro
 _Re-enacts the original training call that produced
 `Models/Car_Detector.pt` (former `Training/TrainYolo.py`): yolov8s,
-`data2/data.yaml`, 100 epochs, imgsz 640, every other knob at
+`data/data.yaml`, 100 epochs, imgsz 640, every other knob at
 Ultralytics default. Provides a fair head-to-head baseline for the
 later runs — any improvement shown by exp/02–06 is measured against
 these numbers, not against the v1 weights (which were trained with an

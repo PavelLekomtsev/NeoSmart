@@ -3,7 +3,7 @@
 Usage:
     python Validation/evaluate.py \\
         --model Models/Car_Detector.pt \\
-        --data Training/data2/valid
+        --data Training/data/val
 
 Outputs (under ``Validation/reports/YYYY-MM-DD/<exp-name>/``):
     metrics.json          — primary + sweep + best-F1 + latency

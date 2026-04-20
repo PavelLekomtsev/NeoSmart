@@ -4,7 +4,7 @@
 # by a minimal Ultralytics call (the former Training/TrainYolo.py):
 #
 #     model = YOLO('yolov8s.pt')
-#     model.train(data='data2/data.yaml', epochs=100, imgsz=640)
+#     model.train(data='data/data.yaml', epochs=100, imgsz=640)
 #
 # Nothing else was set — every other knob fell back to Ultralytics
 # defaults. This file re-enacts that call exactly so exp/01 is a
@@ -32,7 +32,7 @@ patience: 100
 
 # Everything else inherits from config/training.yaml and already
 # matches TrainYolo.py:
-#   model=yolov8s.pt, data=data2/data.yaml, epochs=100, imgsz=640,
+#   model=yolov8s.pt, data=data/data.yaml, epochs=100, imgsz=640,
 #   batch=16, optimizer=auto, lr0=0.01, lrf=0.01, warmup_epochs=3,
 #   cos_lr=false, mosaic=1.0, mixup=0.0, copy_paste=0.0, and the
 #   default HSV/translate/scale/fliplr augmentations.

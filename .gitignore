@@ -7,11 +7,9 @@ Models/plate_scanner/
 # SQLite runtime state
 SmartParking/web_app/data/*.db
 
-# Training / validation datasets (external, Roboflow-sourced)
+# Training / validation datasets (synthetic UE5 renders, too large for git)
 Validation/data
-Validation/data2
 Training/data
-Training/data2
 Training/output_images
 Training/raw
 Training/runs

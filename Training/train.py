@@ -385,7 +385,7 @@ def main() -> int:
         return 0
 
     print_section("Training")
-    # Ultralytics resolves `data: data2/data.yaml` relative to CWD.
+    # Ultralytics resolves `data: data/data.yaml` relative to CWD.
     os.chdir(REPO_ROOT / "Training")
     model = YOLO(cfg["model"])
     skip_keys = {"project", "tags", "model", "project_dir"}

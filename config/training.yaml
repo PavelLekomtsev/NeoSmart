@@ -15,10 +15,12 @@ tags: ["synthetic", "car-topview"]
 
 # --- Dataset ----------------------------------------------------------
 # Path is relative to Training/ (Ultralytics reads from CWD).
-data: data2/data.yaml
+# Training/data/ holds the UE5-rendered synthetic dataset (unreal_*.jpg).
+data: data/data.yaml
 
 # --- Model ------------------------------------------------------------
-# Starting weights. exp/04 swaps this to yolov8m.pt.
+# Starting weights. Held constant across the exp/01-06 series so best.pt
+# is a drop-in replacement for Models/Car_Detector.pt (also yolov8s).
 model: yolov8s.pt
 
 # --- Core training hyperparameters -----------------------------------
