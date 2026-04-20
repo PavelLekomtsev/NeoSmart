@@ -33,6 +33,10 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+import matplotlib
+
+matplotlib.use("Agg")  # headless — we render figures, don't show them.
+import matplotlib.pyplot as plt
 import numpy as np
 import yaml
 from PIL import Image, ImageDraw
@@ -186,8 +190,79 @@ def collect_dataset_stats(data_yaml_path: Path) -> dict[str, Any]:
     return out
 
 
+def _histogram_figure(values: np.ndarray, *, title: str, xlabel: str,
+                      bins: int = 40) -> plt.Figure:
+    fig, ax = plt.subplots(figsize=(6, 4), dpi=110)
+    ax.hist(values, bins=bins, color="#3b82f6", edgecolor="#1e3a8a")
+    ax.set_title(title)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel("count")
+    ax.grid(True, axis="y", alpha=0.3)
+    mean = float(np.mean(values))
+    median = float(np.median(values))
+    ax.axvline(mean, color="#ef4444", linestyle="--", linewidth=1,
+               label=f"mean = {mean:.3f}")
+    ax.axvline(median, color="#10b981", linestyle="--", linewidth=1,
+               label=f"median = {median:.3f}")
+    ax.legend(loc="best", fontsize=8)
+    fig.tight_layout()
+    return fig
+
+
+def _class_balance_figure(stats: dict[str, Any]) -> plt.Figure | None:
+    classes: list[str] = list(stats.get("classes") or [])
+    if not classes:
+        return None
+    splits = list(stats["splits"].keys())
+    x = np.arange(len(classes))
+    width = 0.8 / max(len(splits), 1)
+    fig, ax = plt.subplots(figsize=(6, 4), dpi=110)
+    for i, split in enumerate(splits):
+        cc = stats["splits"][split]["class_counts"]
+        counts = [cc.get(ci, 0) for ci in range(len(classes))]
+        ax.bar(x + (i - (len(splits) - 1) / 2) * width, counts,
+               width=width, label=split)
+    ax.set_xticks(x)
+    ax.set_xticklabels(classes)
+    ax.set_title("Object counts per class, per split")
+    ax.set_ylabel("count")
+    ax.grid(True, axis="y", alpha=0.3)
+    ax.legend()
+    fig.tight_layout()
+    return fig
+
+
+def _split_size_figure(stats: dict[str, Any]) -> plt.Figure:
+    splits = list(stats["splits"].keys())
+    imgs = [stats["splits"][s]["images"] for s in splits]
+    objs = [stats["splits"][s]["objects"] for s in splits]
+    x = np.arange(len(splits))
+    fig, ax = plt.subplots(figsize=(6, 4), dpi=110)
+    ax.bar(x - 0.2, imgs, width=0.4, label="images", color="#3b82f6")
+    ax.bar(x + 0.2, objs, width=0.4, label="objects", color="#f59e0b")
+    ax.set_xticks(x)
+    ax.set_xticklabels(splits)
+    ax.set_title("Dataset split sizes")
+    ax.set_ylabel("count")
+    ax.grid(True, axis="y", alpha=0.3)
+    ax.legend()
+    for xi, v in zip(x - 0.2, imgs, strict=False):
+        ax.text(xi, v, str(v), ha="center", va="bottom", fontsize=8)
+    for xi, v in zip(x + 0.2, objs, strict=False):
+        ax.text(xi, v, str(v), ha="center", va="bottom", fontsize=8)
+    fig.tight_layout()
+    return fig
+
+
 def report_dataset_stats(stats: dict[str, Any]) -> None:
+    """Upload dataset summary to ClearML.
+
+    Writes single-value metrics AND matplotlib figures (explicit images
+    in the Plots tab — ``report_histogram`` alone sometimes lands in a
+    sub-section that's easy to miss).
+    """
     cl = Logger.current_logger()
+
     total_images = sum(s["images"] for s in stats["splits"].values())
     total_objects = sum(s["objects"] for s in stats["splits"].values())
     cl.report_single_value("dataset_total_images", total_images)
@@ -196,36 +271,50 @@ def report_dataset_stats(stats: dict[str, Any]) -> None:
         cl.report_single_value(f"dataset_{split}_images", s["images"])
         cl.report_single_value(f"dataset_{split}_objects", s["objects"])
 
+    fig = _split_size_figure(stats)
+    cl.report_matplotlib_figure(title="dataset_split_sizes",
+                                series="images_vs_objects",
+                                figure=fig, iteration=0, report_image=True)
+    plt.close(fig)
+
+    cb = _class_balance_figure(stats)
+    if cb is not None:
+        cl.report_matplotlib_figure(title="class_balance",
+                                    series="per_split",
+                                    figure=cb, iteration=0, report_image=True)
+        plt.close(cb)
+
     if stats["bbox_widths"]:
-        cl.report_histogram(
-            title="bbox_normalized_width",
-            series="all_splits",
-            values=np.array(stats["bbox_widths"]),
-            xaxis="bbox w / image w",
-            yaxis="count",
-        )
-        cl.report_histogram(
-            title="bbox_normalized_height",
-            series="all_splits",
-            values=np.array(stats["bbox_heights"]),
-            xaxis="bbox h / image h",
-            yaxis="count",
-        )
-        cl.report_histogram(
-            title="bbox_aspect_ratio",
-            series="all_splits",
-            values=np.array(stats["aspect_ratios"]),
-            xaxis="max(w,h) / min(w,h)",
-            yaxis="count",
-        )
+        widths = np.array(stats["bbox_widths"])
+        heights = np.array(stats["bbox_heights"])
+        aspects = np.array(stats["aspect_ratios"])
+        areas = widths * heights  # normalised relative box area
+
+        for title, values, xlabel in (
+            ("bbox_normalized_width", widths, "bbox w / image w"),
+            ("bbox_normalized_height", heights, "bbox h / image h"),
+            ("bbox_aspect_ratio", aspects, "max(w,h) / min(w,h)"),
+            ("bbox_normalized_area", areas, "bbox area / image area"),
+        ):
+            fig = _histogram_figure(values, title=title, xlabel=xlabel)
+            cl.report_matplotlib_figure(title=title, series="all_splits",
+                                        figure=fig, iteration=0,
+                                        report_image=True)
+            plt.close(fig)
+
     if stats["objects_per_image"]:
-        cl.report_histogram(
-            title="objects_per_image",
-            series="all_splits",
-            values=np.array(stats["objects_per_image"]),
-            xaxis="objects per image",
-            yaxis="count",
-        )
+        opi = np.array(stats["objects_per_image"])
+        fig = _histogram_figure(opi, title="objects_per_image",
+                                xlabel="objects per image",
+                                bins=int(max(opi.max() - opi.min() + 1, 10)))
+        cl.report_matplotlib_figure(title="objects_per_image",
+                                    series="all_splits",
+                                    figure=fig, iteration=0,
+                                    report_image=True)
+        plt.close(fig)
+
+    logger.info("Uploaded dataset plots: split sizes, class balance, "
+                "bbox width/height/aspect/area histograms, objects-per-image.")
 
 
 def _overlay_gt(img: Image.Image, label_file: Path,
@@ -248,6 +337,104 @@ def _overlay_gt(img: Image.Image, label_file: Path,
         y2 = (cy + h / 2) * H
         draw.rectangle([x1, y1, x2, y2], outline=color, width=3)
     return img
+
+
+def report_augmented_individual_samples(cfg: dict[str, Any],
+                                        data_yaml_path: Path,
+                                        *, n: int = 16) -> None:
+    """Show what a single training sample looks like AFTER Ultralytics'
+    per-image augmentations (HSV / flip / translate / scale / rotate /
+    shear / perspective) but BEFORE mosaic/mixup/copy-paste are applied.
+
+    The trainer's own ``train_batch*.jpg`` snapshots are useful to see
+    mosaic composition, but when an experiment varies per-image aug
+    (HSV, geometric) the mosaic hides what actually changed per sample.
+    This function builds a fresh YOLODataset with mosaic=mixup=copy_paste=0
+    (while inheriting every other augmentation knob from ``cfg``), pulls
+    ``n`` samples, and uploads them with GT overlays to Debug Samples.
+    """
+    try:
+        from ultralytics.cfg import get_cfg
+        from ultralytics.data.build import build_yolo_dataset
+        from ultralytics.data.utils import check_det_dataset
+    except ImportError as exc:
+        logger.warning("Could not import Ultralytics data utilities: %s", exc)
+        return
+
+    # Pass-through keys — only the ones Ultralytics' DEFAULT_CFG actually
+    # recognises. Anything else would raise in get_cfg.
+    passthrough = {
+        k: cfg[k]
+        for k in (
+            "imgsz", "hsv_h", "hsv_s", "hsv_v",
+            "degrees", "translate", "scale", "shear", "perspective",
+            "flipud", "fliplr",
+        )
+        if k in cfg
+    }
+    passthrough.update({
+        "task": "detect",
+        "mode": "train",
+        "data": str(data_yaml_path),
+        "mosaic": 0.0,
+        "mixup": 0.0,
+        "copy_paste": 0.0,
+        "close_mosaic": 0,
+    })
+    yolo_cfg = get_cfg(overrides=passthrough)
+    data = check_det_dataset(str(data_yaml_path))
+    try:
+        dataset = build_yolo_dataset(yolo_cfg, data["train"], batch=1,
+                                     data=data, mode="train", stride=32)
+    except Exception as exc:
+        logger.warning("Could not build augmented preview dataset: %s", exc)
+        return
+
+    rng = random.Random(cfg.get("seed", 0))
+    picks = rng.sample(range(len(dataset)), min(n, len(dataset)))
+
+    cl = Logger.current_logger()
+    uploaded = 0
+    for i, idx in enumerate(picks):
+        try:
+            sample = dataset[idx]
+        except Exception as exc:
+            logger.warning("Could not load augmented sample %d: %s", idx, exc)
+            continue
+
+        # Tensor [C,H,W] uint8 (RGB) → HWC uint8.
+        img_t = sample["img"]
+        if hasattr(img_t, "cpu"):
+            img_t = img_t.cpu().numpy()
+        img = np.ascontiguousarray(np.transpose(img_t, (1, 2, 0)))
+        if img.dtype != np.uint8:
+            img = np.clip(img, 0, 255).astype(np.uint8)
+
+        pil = Image.fromarray(img)
+        draw = ImageDraw.Draw(pil)
+        H, W = img.shape[:2]
+
+        bboxes = sample.get("bboxes")
+        if bboxes is not None and len(bboxes):
+            boxes = bboxes.cpu().numpy() if hasattr(bboxes, "cpu") else np.asarray(bboxes)
+            for cx, cy, bw, bh in boxes:
+                x1 = (cx - bw / 2) * W
+                y1 = (cy - bh / 2) * H
+                x2 = (cx + bw / 2) * W
+                y2 = (cy + bh / 2) * H
+                draw.rectangle([x1, y1, x2, y2], outline="yellow", width=3)
+
+        cl.report_image(
+            title="train_augmented_individual",
+            series=Path(sample["im_file"]).stem,
+            iteration=i,
+            image=np.array(pil),
+        )
+        uploaded += 1
+
+    if uploaded:
+        logger.info("Uploaded %d non-mosaic augmented samples → Debug Samples "
+                    "(title: train_augmented_individual).", uploaded)
 
 
 def report_debug_samples(data_yaml_path: Path, *, n: int = 16,
@@ -286,17 +473,26 @@ def report_debug_samples(data_yaml_path: Path, *, n: int = 16,
 
 
 def locate_run_dir(project_dir: Path, exp_name: str) -> Path | None:
-    """Ultralytics puts runs under <project_dir>/<exp_name>/ or
-    <project_dir>/train/<exp_name>/ or <project_dir>/detect/<exp_name>/
-    depending on version and task — probe the known locations."""
-    for candidate in (
-        project_dir / exp_name,
-        project_dir / "train" / exp_name,
-        project_dir / "detect" / exp_name,
-    ):
-        if candidate.exists():
-            return candidate
-    return None
+    """Return the run directory for ``exp_name`` under ``project_dir``.
+
+    Ultralytics puts runs under ``<project_dir>/<exp_name>/`` (or under a
+    ``train/``/``detect/`` subdir depending on version/task) and, with
+    ``exist_ok=False``, auto-increments by appending a number — so a
+    second run of the same experiment lands in ``<exp_name>2``,
+    ``<exp_name>3``, etc. Pick the most recently modified match so a
+    restart uploads artifacts from the new run rather than the stale
+    one with the base name.
+    """
+    search_roots = (project_dir, project_dir / "train", project_dir / "detect")
+    candidates: list[Path] = []
+    for root in search_roots:
+        if not root.exists():
+            continue
+        candidates.extend(root.glob(f"{exp_name}*"))
+    candidates = [c for c in candidates if c.is_dir()]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda p: p.stat().st_mtime)
 
 
 def upload_run_artifacts(task: Task, run_dir: Path) -> Path | None:
@@ -329,6 +525,76 @@ def register_best_model(task: Task, best_pt: Path, exp_name: str,
     out = OutputModel(task=task, name=exp_name, framework="PyTorch", tags=tags)
     out.update_weights(weights_filename=str(best_pt))
     logger.info("Registered %s in ClearML Model Registry as %s", best_pt, exp_name)
+
+
+def report_run_debug_images(run_dir: Path) -> None:
+    """Push Ultralytics' train/val batch snapshots to ClearML Debug Samples.
+
+    Ultralytics writes these to disk as part of normal training:
+      * ``train_batch{0,1,2}.jpg`` — first three batches AFTER augmentation +
+        mosaic, so an experiment's actual aug policy is visible. Lives in
+        the train run dir.
+      * ``val_batch{N}_labels.jpg`` — GT overlays on val batches.
+      * ``val_batch{N}_pred.jpg``  — model predictions on val batches.
+
+    Gotcha: in Ultralytics 8.x the in-training validator creates its own
+    save_dir under ``<project_dir>/detect/train<N>/`` instead of writing
+    into the trainer's run_dir, so the val images do NOT land in
+    ``run_dir``. We look for them there too and pick the directory with
+    the newest val_batch file (handles repeated runs of the same
+    experiment).
+    """
+    cl = Logger.current_logger()
+
+    train_files = sorted(run_dir.glob("train_batch*.jpg"))
+
+    def find_val_dir() -> Path | None:
+        # First preference: val plots already sitting in run_dir (works
+        # if Ultralytics ever fixes the save_dir inheritance).
+        if list(run_dir.glob("val_batch*_labels.jpg")):
+            return run_dir
+        # Fallback: sibling <project_dir>/detect/train*/ — pick the one
+        # with the newest val_batch*_labels.jpg.
+        aux_root = run_dir.parent / "detect"
+        if not aux_root.exists():
+            return None
+        candidates = [d for d in aux_root.glob("train*") if d.is_dir()
+                      and list(d.glob("val_batch*_labels.jpg"))]
+        if not candidates:
+            return None
+        return max(
+            candidates,
+            key=lambda d: max((f.stat().st_mtime
+                               for f in d.glob("val_batch*_labels.jpg")),
+                              default=0.0),
+        )
+
+    val_dir = find_val_dir()
+    if val_dir is None:
+        logger.warning("No val_batch*.jpg files found under %s or %s/detect/train*/ "
+                       "— val predictions will be missing from Debug Samples.",
+                       run_dir, run_dir.parent)
+    else:
+        logger.info("Val plots directory: %s", val_dir)
+
+    val_gt = sorted(val_dir.glob("val_batch*_labels.jpg")) if val_dir else []
+    val_pred = sorted(val_dir.glob("val_batch*_pred.jpg")) if val_dir else []
+
+    groups = (
+        ("train_augmented_batches", train_files),
+        ("val_ground_truth", val_gt),
+        ("val_predictions", val_pred),
+    )
+    for title, files in groups:
+        for i, fp in enumerate(files):
+            try:
+                img = np.array(Image.open(fp).convert("RGB"))
+            except Exception as exc:
+                logger.warning("Could not load %s: %s", fp, exc)
+                continue
+            cl.report_image(title=title, series=fp.stem, iteration=i, image=img)
+        if files:
+            logger.info("Uploaded %d %s → Debug Samples.", len(files), title)
 
 
 # ---------------------------------------------------------------------
@@ -379,6 +645,7 @@ def main() -> int:
     print_section("Debug samples")
     report_debug_samples(data_yaml_abs, n=16, seed=cfg.get("seed", 0))
     logger.info("Uploaded 16 train + 16 val samples with GT overlays.")
+    report_augmented_individual_samples(cfg, data_yaml_abs, n=16)
 
     if args.dry_run:
         print_section("Dry run — skipping training")
@@ -403,6 +670,7 @@ def main() -> int:
                        project_dir)
     else:
         logger.info("Run directory: %s", run_dir)
+        report_run_debug_images(run_dir)
         best_pt = upload_run_artifacts(task, run_dir)
         if best_pt is not None:
             register_best_model(task, best_pt, args.exp_name, cfg.get("tags", []))

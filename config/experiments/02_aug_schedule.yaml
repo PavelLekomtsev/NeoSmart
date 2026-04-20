@@ -1,0 +1,41 @@
+# exp/02 — augmentations + cosine LR schedule with warmup.
+#
+# Merges the two "cheap wins" from the original plan (old exp/02 aug
+# study and old exp/03 LR study) into one run. Rationale: on synthetic
+# top-down footage the model overfits scene lighting and car placement,
+# and the default step-LR is suboptimal for long runs. We vary the
+# augmentation stack and the LR policy together because (a) they do
+# not interact pathologically and (b) the baseline already isolates the
+# default SGD + default aug effect — any gain here is attributable to
+# this combined knob.
+#
+# Held constant relative to exp/01: model (yolov8s), imgsz (640), batch,
+# dataset, seed=42, SGD/auto optimizer.
+#
+# Run:
+#   python Training/train.py \
+#       --exp-name exp02_aug_schedule \
+#       --overrides config/experiments/02_aug_schedule.yaml
+
+tags: ["exp02", "augmentation", "lr-schedule"]
+
+# --- Schedule ---
+epochs: 150
+patience: 20
+cos_lr: true
+lr0: 0.01
+lrf: 0.001
+warmup_epochs: 3.0
+
+# --- Augmentation ---
+mosaic: 1.0
+mixup: 0.15
+copy_paste: 0.10
+
+hsv_h: 0.02
+hsv_s: 0.8
+hsv_v: 0.5
+
+translate: 0.15
+scale: 0.6
+fliplr: 0.5

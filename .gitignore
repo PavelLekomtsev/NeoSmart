@@ -1,5 +1,6 @@
 # Trained model weights (too large / regenerated from training runs)
 Models/Car_Detector.pt
+Models/archive/
 yolo_car_detector.pt
 Models/yolov8x.pt
 Models/plate_scanner/

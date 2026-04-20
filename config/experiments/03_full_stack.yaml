@@ -1,0 +1,61 @@
+# exp/03 — full stack: AdamW + regularisation + long horizon.
+#
+# Final run of the series. Merges what were originally three separate
+# experiments (old exp/04 optimizer, old exp/05 regularisation, old
+# exp/06 long combined run) because their ingredients are complementary
+# and keeping them as separate runs would mostly re-measure the same
+# effect. Concretely:
+#   - AdamW optimizer with a smaller lr0 (from old exp/04).
+#   - Label smoothing + larger weight decay + mild rotation/shear/
+#     perspective (from old exp/05).
+#   - Long horizon with patience-based early stopping (from old exp/06).
+# The resulting best.pt is the promotion candidate for Car_Detector@v2.
+#
+# Held constant relative to exp/01: model (yolov8s), imgsz (640),
+# dataset, seed=42.
+#
+# Run:
+#   python Training/train.py \
+#       --exp-name exp03_full_stack \
+#       --overrides config/experiments/03_full_stack.yaml
+#
+# Then, if this wins:
+#   python Training/promote_best.py \
+#       --run-dir Training/runs/exp03_full_stack \
+#       --version v2
+
+tags: ["exp03", "full-stack", "promote-candidate"]
+
+# --- Schedule ---
+# 100 epochs matches exp/01 horizon for a fair comparison; patience
+# remains generous (20) so the AdamW schedule has room to converge
+# without burning budget on a long plateau.
+epochs: 100
+patience: 20
+cos_lr: true
+warmup_epochs: 3.0
+
+# --- Optimizer (AdamW) ---
+optimizer: AdamW
+lr0: 0.001
+lrf: 0.01
+weight_decay: 0.02
+
+# --- Regularisation ---
+label_smoothing: 0.1
+
+# --- Augmentation (aug stack from exp/02 + geometric jitter) ---
+mosaic: 1.0
+mixup: 0.15
+copy_paste: 0.10
+
+hsv_h: 0.025
+hsv_s: 0.8
+hsv_v: 0.5
+
+translate: 0.20
+scale: 0.7
+degrees: 5.0
+shear: 2.0
+perspective: 0.0005
+fliplr: 0.5

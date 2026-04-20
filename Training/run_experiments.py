@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -58,33 +59,15 @@ EXPERIMENTS: tuple[Experiment, ...] = (
     ),
     Experiment(
         id="02",
-        exp_name="exp02_aug_mosaic_mixup",
-        overrides="config/experiments/02_aug_mosaic_mixup.yaml",
-        description="Mosaic + mixup + copy-paste + stronger HSV.",
+        exp_name="exp02_aug_schedule",
+        overrides="config/experiments/02_aug_schedule.yaml",
+        description="Stronger aug (mosaic+mixup+copy-paste+HSV) + cosine LR + warmup, 150 ep.",
     ),
     Experiment(
         id="03",
-        exp_name="exp03_cosine_lr_warmup",
-        overrides="config/experiments/03_lr_schedule.yaml",
-        description="Cosine LR + warmup + early stopping, 150 epochs.",
-    ),
-    Experiment(
-        id="04",
-        exp_name="exp04_optimizer_adamw",
-        overrides="config/experiments/04_optimizer_adamw.yaml",
-        description="AdamW optimizer + tuned lr/weight-decay on best aug+LR.",
-    ),
-    Experiment(
-        id="05",
-        exp_name="exp05_regularization",
-        overrides="config/experiments/05_regularization.yaml",
-        description="Label smoothing + weight decay + geometric augmentation.",
-    ),
-    Experiment(
-        id="06",
-        exp_name="exp06_final_best",
-        overrides="config/experiments/06_final_best.yaml",
-        description="Combined best of exp/02-05, long run; promote candidate.",
+        exp_name="exp03_full_stack",
+        overrides="config/experiments/03_full_stack.yaml",
+        description="AdamW + label smoothing + weight decay + geometric aug, 100 ep; promote candidate.",
     ),
 )
 
@@ -165,7 +148,12 @@ def run_one(exp: Experiment, *, dry_run: bool, extra: list[str]) -> int:
         cmd.append("--dry-run")
     cmd.extend(extra)
     logger.info("Command: %s", " ".join(cmd))
-    return subprocess.call(cmd)
+    # Strip ClearML master-process markers inherited from the preflight
+    # Task.init — otherwise the subprocess's Task.init returns a StubObject
+    # thinking it's a forked child of the preflight task.
+    child_env = {k: v for k, v in os.environ.items()
+                 if k not in ("CLEARML_PROC_MASTER_ID", "TRAINS_PROC_MASTER_ID")}
+    return subprocess.call(cmd, env=child_env)
 
 
 def main() -> int:
