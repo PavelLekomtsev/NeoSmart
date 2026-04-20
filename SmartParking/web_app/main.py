@@ -7,6 +7,7 @@ Supports multiple cameras.
 import asyncio
 import base64
 import json
+import os
 import pickle
 import cv2
 import numpy as np
@@ -123,6 +124,15 @@ def init_barrier_controllers():
     # Try to load PlateRecognizer (may fail if models not downloaded yet).
     # eager_load=True forces YOLO + parseq to download/JIT NOW so the first
     # car at the barrier doesn't pay the ~10s cold-start penalty.
+    #
+    # USE_TFLITE=1 switches the plate *detector* (YOLO11x) to the FP16 TFLite
+    # build for edge-deployability demos. Default (unset/0) keeps the PyTorch
+    # path — faster on desktop GPU and used in normal operation. OCR (parseq)
+    # is unchanged in both modes.
+    use_tflite = os.getenv("USE_TFLITE", "0") == "1"
+    if use_tflite:
+        print("[Barrier] USE_TFLITE=1 — plate detector will run FP16 TFLite (edge mode)")
+
     plate_recognizer = None
     try:
         from plate_scanner import PlateRecognizer
@@ -136,6 +146,7 @@ def init_barrier_controllers():
             match_training_aug=True,
             enhance=False,
             eager_load=True,
+            use_tflite=use_tflite,
         )
     except Exception as e:
         print(f"[Barrier] Warning: PlateRecognizer not available: {e}")
@@ -564,7 +575,21 @@ async def stream_frames(websocket: WebSocket, det: ParkingDetector):
 
 def main():
     """Run the server."""
+    import argparse
     import uvicorn
+
+    parser = argparse.ArgumentParser(description="Smart Parking Monitor server")
+    parser.add_argument(
+        "--tflite",
+        action="store_true",
+        help="Run plate detector as FP16 TFLite (edge demo). Default: PyTorch.",
+    )
+    args = parser.parse_args()
+
+    # Surface --tflite to init_barrier_controllers() via env (it runs inside
+    # FastAPI's lifespan, after uvicorn forks off this entrypoint).
+    if args.tflite:
+        os.environ["USE_TFLITE"] = "1"
 
     print("=" * 60)
     print("  Smart Parking Monitor (Multi-Camera + Barrier Control)")
