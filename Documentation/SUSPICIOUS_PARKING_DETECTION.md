@@ -236,21 +236,20 @@ The suspicious count is only displayed when the Parking Spaces mode is active (i
 | File | Purpose |
 |------|---------|
 | `web_app/detector.py` | `_update_tracking()`, `_get_parking_spot_index()`, `_draw_track_info()`, `_draw_track_id()` — all tracking logic |
-| `web_app/sort.py` | SORT algorithm implementation: `Sort`, `KalmanBoxTracker`, `associate_detections_to_trackers` |
+| `neosmart/tracking/sort.py` | SORT algorithm implementation: `Sort`, `KalmanBoxTracker`, `associate_detections_to_trackers` |
 | `CarParkingSpace/camera3_parkings.p` | Parking polygons for camera3 (used for spot association) |
 | `web_app/static/js/app.js` | Frontend: displays `suspicious_count` in the paid zone stats panel |
 | `web_app/templates/index.html` | HTML structure for the suspicious stat card |
-| `SuspiciousParking/suspicious_car_detector.py` | Standalone prototype script (basis for the integrated implementation) |
+| `legacy/suspicious_car_detector.py` | Standalone prototype script (basis for the integrated implementation) |
 
 ---
 
 ## Standalone Prototype
 
-The original standalone script (`SuspiciousParking/suspicious_car_detector.py`) was the basis for the integrated implementation. It captures video from a connected camera, runs YOLO + SORT, and displays elapsed time for each tracked car.
+The original standalone script (`SmartParking/legacy/suspicious_car_detector.py`) was the basis for the integrated implementation. It captures video from a connected camera, runs YOLO + SORT, and displays elapsed time for each tracked car. See [LEGACY_TOOLS.md](LEGACY_TOOLS.md) for context.
 
 ```bash
-cd SmartParking/SuspiciousParking
-python suspicious_car_detector.py
+python SmartParking/legacy/suspicious_car_detector.py
 ```
 
 Key differences from the integrated version:

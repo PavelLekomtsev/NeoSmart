@@ -1,3 +1,17 @@
+"""
+Legacy standalone tool — suspicious parking detector (prototype).
+
+Superseded by the paid-zone tracking in SmartParking/web_app/detector.py
+(ParkingDetector._update_tracking) which applies the same YOLO + SORT
+pipeline per-camera with polygon awareness and per-spot timers. Retained
+for historical and demonstrability value; not covered by tests or CI.
+
+Reads from a local camera index (cv2.VideoCapture) and displays per-track
+elapsed times in a standalone OpenCV window. No Windows-only deps.
+
+See Documentation/LEGACY_TOOLS.md for the full story.
+"""
+
 import math
 import time
 

@@ -1,3 +1,19 @@
+"""
+Legacy standalone tool — polygon-based parking space detector over the UE5 viewport.
+
+Superseded by SmartParking/web_app/detector.py::ParkingDetector (mode
+"parking_spaces"), which evolved from this script. Retained for historical
+and demonstrability value; not covered by tests or CI.
+
+Captures the UE5 viewport via win32gui + mss and displays free/occupied
+overlays in a standalone OpenCV window. Loads polygons.p from the current
+directory (produced by CarParkingSpace/mark_parking_spaces.py). Requires
+Windows and the legacy deps:
+    pip install -r SmartParking/requirements-win.txt
+
+See Documentation/LEGACY_TOOLS.md for the full story.
+"""
+
 import math
 import cv2
 import cvzone

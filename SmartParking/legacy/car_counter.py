@@ -1,4 +1,17 @@
-# Import necessary libraries
+"""
+Legacy standalone tool — car counter over the UE5 viewport.
+
+Superseded by the NeoSmart web app's free-zone / traffic-counter pipelines
+(SmartParking/web_app/detector.py). Retained for historical and
+demonstrability value; not covered by tests or CI.
+
+Captures the UE5 viewport via win32gui + mss and displays detections in a
+standalone OpenCV window. Requires Windows and the legacy deps:
+    pip install -r SmartParking/requirements-win.txt
+
+See Documentation/LEGACY_TOOLS.md for the full story.
+"""
+
 import math
 import cv2
 import cvzone

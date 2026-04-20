@@ -1,4 +1,20 @@
-# Import necessary libraries
+"""
+Legacy standalone tool — Wrong Parking Detection (basic, homography-based).
+
+Superseded by the bbox-vs-polygon overlap logic in
+SmartParking/web_app/detector.py (ParkingDetector.overlay_parking_spaces),
+which does not require per-camera perspective calibration. Retained for
+historical and demonstrability value; not covered by tests or CI.
+
+Captures the UE5 viewport via win32gui + mss and displays detections in a
+standalone OpenCV window. Loads cameraN_calibration.pkl from
+SmartParking/WrongParking/ (produced by calibrate_perspective.py).
+Requires Windows and the legacy deps:
+    pip install -r SmartParking/requirements-win.txt
+
+See Documentation/LEGACY_TOOLS.md for the full story.
+"""
+
 import math
 import cv2
 import cvzone
@@ -21,8 +37,10 @@ class_names = ["car"]
 # at that position, it's considered wrong parking
 THRESHOLD_FACTOR = 0.87
 
-# Path to calibration files
-CALIBRATION_DIR = Path(__file__).parent
+# Path to calibration files — scripts moved to SmartParking/legacy/ but
+# calibration pickles still live alongside calibrate_perspective.py in
+# SmartParking/WrongParking/.
+CALIBRATION_DIR = Path(__file__).parent.parent / "WrongParking"
 
 # Camera selection
 print("=" * 50)

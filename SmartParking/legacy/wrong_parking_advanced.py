@@ -1,14 +1,19 @@
 """
-Wrong Parking Detection - Advanced (ROI-based).
+Legacy standalone tool — Wrong Parking Detection (advanced, ROI-based).
 
-Detects wrong parking by checking how much of a car's bounding box
-extends outside its assigned parking space polygon.
+Superseded by the bbox-vs-polygon overlap logic in
+SmartParking/web_app/detector.py (ParkingDetector.overlay_parking_spaces).
+Retained for historical and demonstrability value; not covered by tests or CI.
 
-Captures frames in real-time from the Unreal Engine 5 window.
-Loads parking polygons from CarParkingSpace/ (camera1_parkings.p / camera2_parkings.p).
+Captures the UE5 viewport via win32gui + mss and displays detections in a
+standalone OpenCV window. Loads parking polygons from
+SmartParking/CarParkingSpace/ (camera1_parkings.p / camera2_parkings.p).
+Requires Windows and the legacy deps:
+    pip install -r SmartParking/requirements-win.txt
 
-Controls:
-  Q - Quit
+Controls:  Q - Quit
+
+See Documentation/LEGACY_TOOLS.md for the full story.
 """
 
 import math

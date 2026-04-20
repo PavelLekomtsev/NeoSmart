@@ -102,11 +102,10 @@ For each parking polygon:
 A standalone version is also available for testing outside the web app:
 
 ```bash
-cd SmartParking/WrongParking
-python wrong_parking_advanced.py
+python SmartParking/legacy/wrong_parking_advanced.py
 ```
 
-This captures the UE5 window directly and displays the same ROI-based detection in an OpenCV window.
+This captures the UE5 window directly and displays the same ROI-based detection in an OpenCV window. See [LEGACY_TOOLS.md](LEGACY_TOOLS.md) for context.
 
 ---
 
@@ -169,8 +168,8 @@ If a car's actual ratio falls below this threshold, it is classified as **wrongl
 | File | Purpose |
 |------|---------|
 | `web_app/detector.py` | **Advanced detection** — integrated into `ParkingDetector.overlay_parking_spaces()` |
-| `WrongParking/wrong_parking_advanced.py` | Standalone advanced detection (captures UE5 window) |
-| `WrongParking/wrong_parking_basic.py` | Standalone basic detection (aspect ratio + calibration) |
+| `legacy/wrong_parking_advanced.py` | Standalone advanced detection (captures UE5 window) |
+| `legacy/wrong_parking_basic.py` | Standalone basic detection (aspect ratio + calibration) |
 | `WrongParking/calibrate_perspective.py` | Calibration tool for the basic detector (reads from `frames/`) |
 | `WrongParking/camera1_calibration.pkl` | Calibration data for camera 1 (basic detector) |
 | `WrongParking/camera2_calibration.pkl` | Calibration data for camera 2 (basic detector) |
@@ -251,8 +250,7 @@ The detection script captures the UE5 window in real time, detects cars with YOL
 ### Running Detection
 
 ```bash
-cd SmartParking/WrongParking
-python wrong_parking_basic.py
+python SmartParking/legacy/wrong_parking_basic.py
 ```
 
 On launch, you'll be asked which camera to use (1 or 2). The script loads the corresponding `camera{N}_calibration.pkl` file.

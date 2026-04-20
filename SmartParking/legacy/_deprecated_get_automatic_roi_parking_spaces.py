@@ -1,3 +1,15 @@
+"""
+Legacy standalone tool — deprecated automatic ROI picker for parking polygons.
+
+Superseded by SmartParking/CarParkingSpace/mark_parking_spaces.py. Retained
+for historical and demonstrability value; not covered by tests or CI.
+
+Captures the UE5 viewport via win32gui + mss. Requires Windows and the
+legacy deps: pip install -r SmartParking/requirements-win.txt
+
+See Documentation/LEGACY_TOOLS.md for the full story.
+"""
+
 import cv2
 import numpy as np
 import pickle
