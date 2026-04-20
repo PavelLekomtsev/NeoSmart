@@ -51,13 +51,16 @@ class ParkingDetector:
         "camera3": lambda n: {0: 46, 1: 46},
     }
 
-    CAMERA_IDS = ["camera1", "camera2", "camera3", "camera4"]
+    CAMERA_IDS = ["camera1", "camera2", "camera3", "camera4", "camera5", "camera6"]
 
     # Road cameras (traffic counting, no parking spaces)
     ROAD_CAMERA_IDS = ["camera4"]
 
     # Cameras that use SORT tracking (paid zone only)
     TRACKING_CAMERA_IDS = ["camera3"]
+
+    # Barrier cameras (plate recognition + barrier control, no parking logic)
+    BARRIER_CAMERA_IDS = ["camera5", "camera6"]
 
     # SORT tracker parameters
     SORT_MAX_AGE = 20       # frames to keep a track alive without detections
@@ -103,6 +106,20 @@ class ParkingDetector:
         self.camera_stats = {}
 
         for cam_id in self.CAMERA_IDS:
+            # Barrier cameras don't have parking spaces (handled by BarrierController)
+            if cam_id in self.BARRIER_CAMERA_IDS:
+                self.camera_polygons[cam_id] = []
+                self.camera_total_spaces[cam_id] = 0
+                self.camera_stats[cam_id] = {
+                    "total_spaces": 0,
+                    "occupied": 0,
+                    "available": 0,
+                    "cars_detected": 0,
+                    "wrong_count": 0
+                }
+                print(f"Barrier camera {cam_id} initialized (plate recognition mode)")
+                continue
+
             # Road cameras don't have parking spaces
             if cam_id in self.ROAD_CAMERA_IDS:
                 self.camera_polygons[cam_id] = []
@@ -704,6 +721,25 @@ class ParkingDetector:
         Returns:
             Tuple of (processed_image, stats_dict)
         """
+        # Barrier cameras: detection only, no parking/tracking logic
+        # (BarrierController handles the rest in main.py)
+        if camera_id in self.BARRIER_CAMERA_IDS:
+            object_list = self.detect_cars(img, draw=True)
+            stats = {
+                "total_spaces": 0,
+                "occupied": 0,
+                "available": 0,
+                "cars_detected": len(object_list),
+                "wrong_count": 0,
+                "tracked_count": 0,
+                "suspicious_count": 0,
+                "incoming_count": 0,
+                "outgoing_count": 0,
+                "mode": "barrier",
+            }
+            self.camera_stats[camera_id] = stats
+            return img, stats, object_list
+
         object_list = self.detect_cars(img, draw=True)
         cars_detected = len(object_list)
 

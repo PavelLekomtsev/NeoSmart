@@ -1,0 +1,52 @@
+[
+    {
+        "plate_number": "A001AA77",
+        "owner_name": "Ivanov Ivan",
+        "vehicle_description": "BMW M3 Black"
+    },
+    {
+        "plate_number": "B002BB77",
+        "owner_name": "Petrov Petr",
+        "vehicle_description": "Audi Q7 White"
+    },
+    {
+        "plate_number": "C003CC77",
+        "owner_name": "Sidorov Alexey",
+        "vehicle_description": "Renault Logan Gray"
+    },
+    {
+        "plate_number": "E004EE77",
+        "owner_name": "Kozlov Dmitry",
+        "vehicle_description": "VAZ 2107 Blue"
+    },
+    {
+        "plate_number": "H005HH77",
+        "owner_name": "Morozova Anna",
+        "vehicle_description": "Rolls Royce Ghost Silver"
+    },
+    {
+        "plate_number": "K006KK77",
+        "owner_name": "Volkov Sergey",
+        "vehicle_description": "Sport Car Red"
+    },
+    {
+        "plate_number": "M007MM77",
+        "owner_name": "Novikova Elena",
+        "vehicle_description": "Van White"
+    },
+    {
+        "plate_number": "T008TT77",
+        "owner_name": "Lebedev Andrey",
+        "vehicle_description": "Truck Blue"
+    },
+    {
+        "plate_number": "M214OA152",
+        "owner_name": "Test Vehicle 1",
+        "vehicle_description": "First test car (entry barrier demo)"
+    },
+    {
+        "plate_number": "E232BA152",
+        "owner_name": "Test Vehicle 2",
+        "vehicle_description": "Second test car"
+    }
+]

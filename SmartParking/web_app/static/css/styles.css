@@ -18,6 +18,8 @@
     --zone-paid-bg: rgba(245, 158, 11, 0.1);
     --zone-road-color: #3b82f6;
     --zone-road-bg: rgba(59, 130, 246, 0.1);
+    --zone-barrier-color: #8b5cf6;
+    --zone-barrier-bg: rgba(139, 92, 246, 0.1);
 }
 
 * {
@@ -915,6 +917,15 @@ body {
     font-weight: 700;
 }
 
+/* State / plate text on the Barrier overview card can get long
+   ("BARRIER CLOSING", plate numbers) — shrink so it doesn't overflow. */
+#overview-barrier-state,
+#overview-barrier-plate {
+    font-size: 0.95rem;
+    letter-spacing: 0.3px;
+    word-break: break-word;
+}
+
 .zone-mini-progress {
     height: 6px;
     background: var(--bg-card);
@@ -966,4 +977,492 @@ body {
 
 .stat-updated {
     animation: statPulse 0.3s ease;
+}
+
+/* ===========================
+   BARRIER CONTROL ZONE STYLES
+   =========================== */
+
+/* Barrier zone indicator */
+.zone-indicator--barrier {
+    background: var(--zone-barrier-color);
+    box-shadow: 0 0 8px rgba(139, 92, 246, 0.5);
+}
+
+.zone-summary-card.zone-barrier {
+    border-top: 3px solid var(--zone-barrier-color);
+    background: linear-gradient(135deg, var(--bg-card), var(--zone-barrier-bg));
+}
+
+#view-barrier .camera-section {
+    border-top: 2px solid var(--zone-barrier-color);
+}
+
+.zone-tab-badge--barrier {
+    background: var(--zone-barrier-color) !important;
+}
+
+.badge-purple {
+    background: rgba(139, 92, 246, 0.2);
+    color: var(--zone-barrier-color);
+    border: 1px solid var(--zone-barrier-color);
+}
+
+/* Plate display mono font */
+.barrier-plate-mono,
+.barrier-plate-display {
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-weight: 700;
+    letter-spacing: 1px;
+}
+
+/* Barrier Control Panel */
+.barrier-control-panel {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+}
+
+.barrier-state-card,
+.barrier-stats-card {
+    background: var(--bg-card);
+    border-radius: 12px;
+    padding: 1.5rem;
+    border: 1px solid var(--border-color);
+}
+
+.barrier-state-card {
+    border-left: 4px solid var(--zone-barrier-color);
+}
+
+.barrier-state-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.barrier-state-header h3 {
+    color: var(--text-primary);
+    font-size: 1.1rem;
+}
+
+.barrier-state-indicator {
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    background: rgba(128, 128, 128, 0.3);
+    color: #94a3b8;
+}
+
+.barrier-state-indicator.state-idle {
+    background: rgba(128, 128, 128, 0.3);
+    color: #94a3b8;
+}
+
+.barrier-state-indicator.state-approaching {
+    background: rgba(234, 179, 8, 0.2);
+    color: var(--accent-yellow);
+    animation: barrierPulse 1.5s infinite;
+}
+
+.barrier-state-indicator.state-reading {
+    background: rgba(249, 115, 22, 0.2);
+    color: #f97316;
+    animation: barrierPulse 0.8s infinite;
+}
+
+.barrier-state-indicator.state-granted {
+    background: rgba(34, 197, 94, 0.2);
+    color: var(--accent-green);
+}
+
+.barrier-state-indicator.state-denied {
+    background: rgba(239, 68, 68, 0.2);
+    color: var(--accent-red);
+    animation: barrierFlash 0.5s ease 3;
+}
+
+.barrier-state-indicator.state-opening,
+.barrier-state-indicator.state-passing {
+    background: rgba(34, 197, 94, 0.2);
+    color: var(--accent-green);
+}
+
+.barrier-state-indicator.state-closing {
+    background: rgba(59, 130, 246, 0.2);
+    color: var(--accent-blue);
+}
+
+@keyframes barrierPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+@keyframes barrierFlash {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.2; }
+}
+
+/* Barrier Info Grid */
+.barrier-info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.barrier-info-item {
+    background: rgba(0, 0, 0, 0.2);
+    padding: 0.75rem;
+    border-radius: 8px;
+}
+
+.barrier-info-label {
+    display: block;
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    margin-bottom: 0.25rem;
+}
+
+.barrier-info-value {
+    display: block;
+    font-size: 1rem;
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.barrier-plate-display {
+    font-size: 1.2rem !important;
+    color: var(--zone-barrier-color) !important;
+}
+
+/* Manual Control Buttons */
+.barrier-manual-controls {
+    display: flex;
+    gap: 0.75rem;
+}
+
+.barrier-btn {
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.barrier-btn-open {
+    background: rgba(34, 197, 94, 0.2);
+    color: var(--accent-green);
+    border: 1px solid var(--accent-green);
+    flex: 1;
+}
+
+.barrier-btn-open:hover {
+    background: rgba(34, 197, 94, 0.4);
+}
+
+.barrier-btn-close {
+    background: rgba(239, 68, 68, 0.2);
+    color: var(--accent-red);
+    border: 1px solid var(--accent-red);
+    flex: 1;
+}
+
+.barrier-btn-close:hover {
+    background: rgba(239, 68, 68, 0.4);
+}
+
+.barrier-btn-add {
+    background: var(--zone-barrier-color);
+    color: white;
+}
+
+.barrier-btn-add:hover {
+    background: #7c3aed;
+}
+
+.barrier-btn-remove {
+    background: rgba(239, 68, 68, 0.2);
+    color: var(--accent-red);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+}
+
+.barrier-btn-remove:hover {
+    background: rgba(239, 68, 68, 0.4);
+}
+
+/* Today Stats */
+.barrier-stats-card h3 {
+    color: var(--text-primary);
+    font-size: 1.1rem;
+    margin-bottom: 1rem;
+}
+
+.barrier-today-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.75rem;
+}
+
+.barrier-today-stat {
+    text-align: center;
+    background: rgba(0, 0, 0, 0.2);
+    padding: 1rem 0.5rem;
+    border-radius: 8px;
+}
+
+.barrier-today-value {
+    display: block;
+    font-size: 1.8rem;
+    font-weight: 700;
+}
+
+.barrier-today-label {
+    display: block;
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    margin-top: 0.25rem;
+}
+
+/* Access Log */
+.barrier-log-section {
+    margin-top: 1.5rem;
+    background: var(--bg-card);
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+    overflow: hidden;
+}
+
+.barrier-log-header {
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.barrier-log-header h3 {
+    color: var(--text-primary);
+    font-size: 1rem;
+}
+
+.barrier-log-container {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.barrier-log-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.barrier-log-table th {
+    background: rgba(0, 0, 0, 0.3);
+    padding: 0.6rem 1rem;
+    text-align: left;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    position: sticky;
+    top: 0;
+}
+
+.barrier-log-table td {
+    padding: 0.5rem 1rem;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.barrier-log-table tbody tr:hover {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.barrier-log-table .result-granted {
+    color: var(--accent-green);
+    font-weight: 600;
+}
+
+.barrier-log-table .result-denied {
+    color: var(--accent-red);
+    font-weight: 600;
+}
+
+.barrier-log-table .result-manual {
+    color: var(--zone-barrier-color);
+    font-weight: 600;
+}
+
+.barrier-log-empty {
+    text-align: center;
+    color: var(--text-secondary);
+    padding: 2rem !important;
+}
+
+/* Plate Management */
+.barrier-plates-section {
+    margin-top: 1.5rem;
+    background: var(--bg-card);
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+    padding: 1.5rem;
+}
+
+.barrier-plates-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.barrier-plates-header h3 {
+    color: var(--text-primary);
+    font-size: 1rem;
+}
+
+.barrier-plates-add {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.barrier-plates-add input {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 0.4rem 0.75rem;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-family: 'Consolas', monospace;
+}
+
+.barrier-plates-add input:focus {
+    outline: none;
+    border-color: var(--zone-barrier-color);
+}
+
+#barrier-new-plate {
+    width: 120px;
+    text-transform: uppercase;
+}
+
+#barrier-new-owner {
+    width: 160px;
+}
+
+.barrier-plates-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 0.5rem;
+}
+
+.barrier-plate-item {
+    background: rgba(0, 0, 0, 0.2);
+    padding: 0.6rem 0.75rem;
+    border-radius: 6px;
+    border-left: 3px solid var(--zone-barrier-color);
+    min-width: 0;
+}
+
+.barrier-plate-item-view {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.barrier-plate-item.editing .barrier-plate-item-view {
+    display: none;
+}
+
+.barrier-plate-item-edit {
+    display: none;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.barrier-plate-item-edit > .barrier-plate-item-number {
+    margin-bottom: 0.15rem;
+}
+
+.barrier-plate-item.editing .barrier-plate-item-edit {
+    display: flex;
+}
+
+.barrier-plate-item-edit input {
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    padding: 0.35rem 0.5rem;
+    color: var(--text-primary);
+    font-size: 0.85rem;
+}
+
+.barrier-plate-item-edit input:focus {
+    outline: none;
+    border-color: var(--zone-barrier-color);
+}
+
+.barrier-plate-item-info {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+}
+
+.barrier-plate-item-actions {
+    display: flex;
+    gap: 0.35rem;
+    flex-shrink: 0;
+}
+
+.barrier-plate-item-number {
+    font-family: 'Consolas', monospace;
+    font-weight: 700;
+    color: var(--text-primary);
+    font-size: 0.95rem;
+}
+
+.barrier-plate-item-owner {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.barrier-plate-item-desc {
+    font-size: 0.7rem;
+    color: var(--text-tertiary, rgba(255,255,255,0.4));
+    font-style: italic;
+}
+
+.barrier-btn-edit {
+    background: rgba(79, 70, 229, 0.2);
+    color: #a5b4fc;
+    border: 1px solid rgba(79, 70, 229, 0.4);
+}
+
+.barrier-btn-edit:hover {
+    background: rgba(79, 70, 229, 0.35);
+}
+
+/* Responsive barrier */
+@media (max-width: 768px) {
+    .barrier-control-panel {
+        grid-template-columns: 1fr;
+    }
+    .barrier-today-stats {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .barrier-plates-add {
+        flex-wrap: wrap;
+    }
 }

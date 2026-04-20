@@ -7,6 +7,8 @@ Supports multiple cameras.
 import asyncio
 import base64
 import json
+import os
+import pickle
 import cv2
 import numpy as np
 import time
@@ -22,13 +24,16 @@ from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
 from detector import ParkingDetector, create_placeholder_image
+from barrier_controller import BarrierController
+from barrier_db import BarrierDatabase
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    """Pre-load the detector at server startup so WebSocket connects instantly."""
+    """Pre-load the detector and barrier controllers at server startup."""
     print("Pre-loading detector at startup...")
     get_detector()
+    init_barrier_controllers()
     print("Server ready for connections.")
     yield
 
@@ -41,19 +46,37 @@ app = FastAPI(
 )
 
 BASE_DIR = Path(__file__).parent
-app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
+
+
+class ImmutableStaticFiles(StaticFiles):
+    """StaticFiles that tells the browser to cache forever.
+
+    Every reference to a static asset in the HTML uses a `?v=NN` query string
+    (e.g. `app.js?v=11`), so when we update an asset we also bump its version
+    and the browser fetches the new URL. Marking responses as `immutable` lets
+    the browser skip conditional revalidation entirely — no more 304 round-trips
+    cluttering the server log on every page load."""
+
+    async def get_response(self, path, scope):
+        resp = await super().get_response(path, scope)
+        resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return resp
+
+
+app.mount("/static", ImmutableStaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
 FRAMES_DIR = Path("E:/Work/Computer_Vision/Projects/NeoSmart/SmartParking/frames")
 
-CAMERA_IDS = ["camera1", "camera2", "camera3", "camera4"]
+CAMERA_IDS = ["camera1", "camera2", "camera3", "camera4", "camera5", "camera6"]
 
-FRAME_PATHS = {
-    "camera1": FRAMES_DIR / "camera1.png",
-    "camera2": FRAMES_DIR / "camera2.png",
-    "camera3": FRAMES_DIR / "camera3.png",
-    "camera4": FRAMES_DIR / "camera4.png",
-}
+FRAME_PATHS = {cam_id: FRAMES_DIR / f"{cam_id}.png" for cam_id in CAMERA_IDS}
+
+BARRIER_CAMERA_IDS = ["camera5", "camera6"]
+
+# Barrier camera roles
+ENTRY_PLATE_CAMERA = "camera5"    # Plate recognition for entry barrier
+ENTRY_SAFETY_CAMERA = "camera6"   # Safety zone monitoring for entry barrier
 
 
 class FrameStorage:
@@ -76,6 +99,105 @@ def get_detector() -> ParkingDetector:
         detector = ParkingDetector()
         print("Detector ready!")
     return detector
+
+
+# --- Barrier System ---
+
+barrier_db: Optional[BarrierDatabase] = None
+barrier_controllers: dict[str, BarrierController] = {}
+
+
+def init_barrier_controllers():
+    """Initialize barrier controllers for entry/exit.
+
+    Entry barrier uses two cameras:
+      - camera5 (plate cam): approach + reading zones
+      - camera6 (safety cam): safety zone
+    Exit barrier: manual control only (no camera automation until camera7 is added).
+    """
+    global barrier_db, barrier_controllers
+
+    barrier_db = BarrierDatabase()
+    barrier_db.reset_runtime_state()
+    print(f"[Barrier] Database initialized")
+
+    # Try to load PlateRecognizer (may fail if models not downloaded yet).
+    # eager_load=True forces YOLO + parseq to download/JIT NOW so the first
+    # car at the barrier doesn't pay the ~10s cold-start penalty.
+    #
+    # USE_TFLITE=1 switches the plate *detector* (YOLO11x) to the FP16 TFLite
+    # build for edge-deployability demos. Default (unset/0) keeps the PyTorch
+    # path — faster on desktop GPU and used in normal operation. OCR (parseq)
+    # is unchanged in both modes.
+    use_tflite = os.getenv("USE_TFLITE", "0") == "1"
+    if use_tflite:
+        print("[Barrier] USE_TFLITE=1 — plate detector will run FP16 TFLite (edge mode)")
+
+    plate_recognizer = None
+    try:
+        from plate_scanner import PlateRecognizer
+        # enhance=False here because stream_frames() applies the same HSV boost
+        # to the visible processed_frame BEFORE detection. Doing it once at the
+        # stream layer keeps the dashboard view aligned with what the AI sees
+        # and avoids double-enhancement.
+        plate_recognizer = PlateRecognizer(
+            confidence=0.06,
+            augment=True,
+            match_training_aug=True,
+            enhance=False,
+            eager_load=True,
+            use_tflite=use_tflite,
+        )
+    except Exception as e:
+        print(f"[Barrier] Warning: PlateRecognizer not available: {e}")
+        print("[Barrier] Barrier system will run without plate recognition")
+
+    barrier_dir = Path(__file__).parent.parent / "BarrierSystem"
+
+    # --- Entry barrier: camera5 (approach+reading) + camera6 (safety) ---
+    entry_zones = {"approach_zone": None, "reading_zone": None, "safety_zone": None}
+
+    # Load plate camera zones (camera5)
+    cam5_file = barrier_dir / f"{ENTRY_PLATE_CAMERA}_barrier.p"
+    if cam5_file.exists():
+        try:
+            with open(cam5_file, "rb") as f:
+                data = pickle.load(f)
+            entry_zones["approach_zone"] = data.get("approach")
+            entry_zones["reading_zone"] = data.get("reading")
+            print(f"[Barrier] Entry: loaded approach+reading zones from {cam5_file}")
+        except Exception as e:
+            print(f"[Barrier] Warning: Could not load {cam5_file}: {e}")
+    else:
+        print(f"[Barrier] No zone calibration for {ENTRY_PLATE_CAMERA}. "
+              f"Run BarrierSystem/mark_barrier_zones.py (mode: Plate camera)")
+
+    # Load safety camera zones (camera6)
+    cam6_file = barrier_dir / f"{ENTRY_SAFETY_CAMERA}_barrier.p"
+    if cam6_file.exists():
+        try:
+            with open(cam6_file, "rb") as f:
+                data = pickle.load(f)
+            entry_zones["safety_zone"] = data.get("safety")
+            print(f"[Barrier] Entry: loaded safety zone from {cam6_file}")
+        except Exception as e:
+            print(f"[Barrier] Warning: Could not load {cam6_file}: {e}")
+    else:
+        print(f"[Barrier] No zone calibration for {ENTRY_SAFETY_CAMERA}. "
+              f"Run BarrierSystem/mark_barrier_zones.py (mode: Safety camera)")
+
+    if plate_recognizer is not None:
+        entry_ctrl = BarrierController(
+            barrier_id="entry",
+            camera_id=ENTRY_PLATE_CAMERA,
+            plate_recognizer=plate_recognizer,
+            database=barrier_db,
+            safety_camera_id=ENTRY_SAFETY_CAMERA,
+            **entry_zones
+        )
+        barrier_controllers["entry"] = entry_ctrl
+    else:
+        print("[Barrier] Skipping entry controller (no plate recognizer)")
 
 
 class ConnectionManager:
@@ -193,6 +315,102 @@ async def receive_frame(request: Request):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+# --- Barrier REST API ---
+# NOTE: Static routes (/api/barrier/log, /api/barrier/plates) MUST be declared
+# BEFORE the parametrized route /api/barrier/{barrier_id}, otherwise FastAPI
+# matches the latter first with barrier_id="plates" / barrier_id="log".
+
+@app.get("/api/barrier/log")
+async def get_barrier_log():
+    """Get recent access log entries for the dashboard."""
+    if barrier_db is None:
+        return []
+    return barrier_db.get_recent_log(limit=50)
+
+
+@app.get("/api/barrier/plates")
+async def get_barrier_plates():
+    """Get list of allowed plates."""
+    if barrier_db is None:
+        return []
+    return barrier_db.get_all_plates()
+
+
+@app.post("/api/barrier/plates")
+async def add_barrier_plate(request: Request):
+    """Add a plate to the allowed list."""
+    if barrier_db is None:
+        return JSONResponse({"error": "Barrier DB not initialized"}, status_code=500)
+    data = await request.json()
+    plate = data.get("plate_number", "").strip().upper()
+    if not plate:
+        return JSONResponse({"error": "plate_number required"}, status_code=400)
+    ok = barrier_db.add_plate(plate, data.get("owner_name", ""), data.get("vehicle_description", ""))
+    return {"status": "ok" if ok else "error", "plate": plate}
+
+
+@app.delete("/api/barrier/plates/{plate}")
+async def remove_barrier_plate(plate: str):
+    """Remove a plate from the allowed list."""
+    if barrier_db is None:
+        return JSONResponse({"error": "Barrier DB not initialized"}, status_code=500)
+    ok = barrier_db.remove_plate(plate)
+    return {"status": "ok" if ok else "not_found", "plate": plate}
+
+
+@app.put("/api/barrier/plates/{plate}")
+async def update_barrier_plate(plate: str, request: Request):
+    """Update owner/description for an existing plate."""
+    if barrier_db is None:
+        return JSONResponse({"error": "Barrier DB not initialized"}, status_code=500)
+    data = await request.json()
+    ok = barrier_db.update_plate(
+        plate,
+        owner=data.get("owner_name"),
+        description=data.get("vehicle_description"),
+    )
+    return {"status": "ok" if ok else "not_found", "plate": plate}
+
+
+@app.get("/api/barrier/{barrier_id}")
+async def get_barrier_state(barrier_id: str):
+    """UE5 polls this endpoint to get barrier state and commands."""
+    controller = barrier_controllers.get(barrier_id)
+    if controller is None:
+        return JSONResponse({"error": f"Unknown barrier: {barrier_id}"}, status_code=404)
+    return controller.get_barrier_api_state()
+
+
+@app.post("/api/barrier/{barrier_id}/ue5_ack")
+async def barrier_ue5_ack(barrier_id: str, request: Request):
+    """UE5 calls this when barrier animation completes."""
+    controller = barrier_controllers.get(barrier_id)
+    if controller is None:
+        return JSONResponse({"error": f"Unknown barrier: {barrier_id}"}, status_code=404)
+
+    data = await request.json()
+    event = data.get("event", "")
+    controller.ack_from_ue5(event)
+    return {"status": "ok", "event": event}
+
+
+@app.post("/api/barrier/{barrier_id}/manual")
+async def barrier_manual_control(barrier_id: str, request: Request):
+    """Manual barrier control from dashboard operator."""
+    controller = barrier_controllers.get(barrier_id)
+    if controller is None:
+        return JSONResponse({"error": f"Unknown barrier: {barrier_id}"}, status_code=404)
+    data = await request.json()
+    command = data.get("command", "")
+    if command == "open":
+        controller.manual_open()
+    elif command == "close":
+        controller.manual_close()
+    else:
+        return JSONResponse({"error": f"Unknown command: {command}"}, status_code=400)
+    return {"status": "ok", "command": command}
+
+
 @app.websocket("/ws/stream")
 async def websocket_stream(websocket: WebSocket):
     """WebSocket endpoint for video streaming."""
@@ -214,6 +432,15 @@ async def websocket_stream(websocket: WebSocket):
                                    ParkingDetector.MODE_CAR_COUNTER]:
                         det.set_mode(new_mode)
                         print(f"[WS] Mode changed to: {new_mode}")
+
+                elif message.get("type") == "barrier_command":
+                    bid = message.get("barrier_id")
+                    cmd = message.get("command")
+                    ctrl = barrier_controllers.get(bid)
+                    if ctrl and cmd == "manual_open":
+                        ctrl.manual_open()
+                    elif ctrl and cmd == "manual_close":
+                        ctrl.manual_close()
 
             except WebSocketDisconnect:
                 break
@@ -253,7 +480,47 @@ async def stream_frames(websocket: WebSocket, det: ParkingDetector):
 
                 if original_frame is not None:
                     processed_frame = original_frame.copy()
-                    processed_frame, stats = det.process_frame(processed_frame, cam_id)
+
+                    if cam_id == ENTRY_PLATE_CAMERA:
+                        # camera5: plate recognition for entry barrier.
+                        # Apply HSV brightness/saturation boost to the working
+                        # frame BEFORE detection so (a) the visible "AI Detection"
+                        # canvas shows the same image the AI sees and (b) the
+                        # plate recognizer's internal enhance can stay off
+                        # (single point of enhancement = no double-application).
+                        entry_ctrl = barrier_controllers.get("entry")
+                        if entry_ctrl is not None and entry_ctrl.plate_recognizer is not None:
+                            processed_frame = entry_ctrl.plate_recognizer.enhance_frame(processed_frame)
+
+                        result = det.process_frame(processed_frame, cam_id)
+                        if len(result) == 3:
+                            processed_frame, stats, object_list = result
+                        else:
+                            processed_frame, stats = result
+                            object_list = []
+
+                        if entry_ctrl is not None:
+                            barrier_result = entry_ctrl.process_frame(processed_frame, object_list)
+                            stats["barrier"] = barrier_result
+
+                    elif cam_id == ENTRY_SAFETY_CAMERA:
+                        # camera6: safety zone monitoring for entry barrier
+                        result = det.process_frame(processed_frame, cam_id)
+                        if len(result) == 3:
+                            processed_frame, stats, object_list = result
+                        else:
+                            processed_frame, stats = result
+                            object_list = []
+
+                        entry_ctrl = barrier_controllers.get("entry")
+                        if entry_ctrl is not None:
+                            entry_ctrl.update_safety(object_list)
+                            entry_ctrl.draw_safety_overlay(processed_frame)
+                            stats["barrier"] = entry_ctrl._build_result()
+
+                    else:
+                        processed_frame, stats = det.process_frame(processed_frame, cam_id)
+
                     stats["ue5_connected"] = True
 
                     _, original_buffer = cv2.imencode('.jpg', original_frame,
@@ -308,10 +575,24 @@ async def stream_frames(websocket: WebSocket, det: ParkingDetector):
 
 def main():
     """Run the server."""
+    import argparse
     import uvicorn
 
+    parser = argparse.ArgumentParser(description="Smart Parking Monitor server")
+    parser.add_argument(
+        "--tflite",
+        action="store_true",
+        help="Run plate detector as FP16 TFLite (edge demo). Default: PyTorch.",
+    )
+    args = parser.parse_args()
+
+    # Surface --tflite to init_barrier_controllers() via env (it runs inside
+    # FastAPI's lifespan, after uvicorn forks off this entrypoint).
+    if args.tflite:
+        os.environ["USE_TFLITE"] = "1"
+
     print("=" * 60)
-    print("  Smart Parking Monitor (Multi-Camera)")
+    print("  Smart Parking Monitor (Multi-Camera + Barrier Control)")
     print("=" * 60)
     print()
     print(f"  Frames directory: {FRAMES_DIR}")

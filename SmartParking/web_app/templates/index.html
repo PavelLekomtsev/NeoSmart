@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Smart Parking Monitor</title>
-    <link rel="stylesheet" href="/static/css/styles.css?v=10">
+    <link rel="stylesheet" href="/static/css/styles.css?v=12">
 </head>
 <body>
     <div class="container">
@@ -59,6 +59,19 @@
                 </svg>
                 <span>Road Traffic</span>
                 <span class="zone-tab-badge" id="road-zone-count">-</span>
+            </button>
+            <button class="zone-tab" data-view="barrier">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                </svg>
+                <span>Barrier Control</span>
+                <span class="zone-tab-badge zone-tab-badge--barrier" id="barrier-zone-count">-</span>
+            </button>
+            <button class="zone-tab" data-view="access">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                </svg>
+                <span>Access Management</span>
             </button>
         </nav>
 
@@ -152,6 +165,36 @@
                             <div class="zone-mini-stat">
                                 <span class="zone-mini-stat-label">Total</span>
                                 <span class="zone-mini-stat-value" id="overview-road-total" style="color: var(--accent-blue)">0</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Barrier Zone Summary Card -->
+                    <div class="zone-summary-card zone-barrier">
+                        <div class="zone-summary-header">
+                            <div class="zone-summary-title">
+                                <span class="zone-indicator zone-indicator--barrier"></span>
+                                <h2>Barrier Control</h2>
+                                <span class="zone-camera-count">2 cameras</span>
+                            </div>
+                            <button class="zone-detail-btn" data-view="barrier">View Details</button>
+                        </div>
+                        <div class="zone-summary-stats">
+                            <div class="zone-mini-stat">
+                                <span class="zone-mini-stat-label">State</span>
+                                <span class="zone-mini-stat-value" id="overview-barrier-state" style="color: var(--zone-barrier-color)">IDLE</span>
+                            </div>
+                            <div class="zone-mini-stat">
+                                <span class="zone-mini-stat-label">Entries</span>
+                                <span class="zone-mini-stat-value" id="overview-barrier-entries" style="color: var(--accent-green)">0</span>
+                            </div>
+                            <div class="zone-mini-stat">
+                                <span class="zone-mini-stat-label">Denied</span>
+                                <span class="zone-mini-stat-value" id="overview-barrier-denied" style="color: var(--accent-red)">0</span>
+                            </div>
+                            <div class="zone-mini-stat">
+                                <span class="zone-mini-stat-label">Last Plate</span>
+                                <span class="zone-mini-stat-value barrier-plate-mono" id="overview-barrier-plate">---</span>
                             </div>
                         </div>
                     </div>
@@ -794,12 +837,203 @@
                 </div>
             </div>
 
+            <!-- VIEW: Barrier Control -->
+            <div class="view hidden" id="view-barrier" data-view="barrier">
+                <!-- Camera 5 - Entry Barrier -->
+                <section class="camera-section">
+                    <div class="camera-section-header">
+                        <h2>Entry Barrier Camera</h2>
+                        <span class="camera-status" id="camera5-status">Offline</span>
+                    </div>
+                    <div class="video-grid">
+                        <div class="video-card">
+                            <div class="video-header">
+                                <h3>Unreal Engine Stream</h3>
+                                <span class="badge badge-blue">Original</span>
+                            </div>
+                            <div class="video-container">
+                                <canvas id="camera5-original-canvas"></canvas>
+                                <button class="fullscreen-btn" data-canvas="camera5-original-canvas" title="Fullscreen">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/>
+                                    </svg>
+                                </button>
+                                <div class="video-overlay" id="camera5-original-overlay">
+                                    <div class="loader"></div>
+                                    <p>Waiting for stream...</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="video-card">
+                            <div class="video-header">
+                                <h3>AI Detection + Plate Recognition</h3>
+                                <span class="badge badge-purple">Barrier</span>
+                            </div>
+                            <div class="video-container">
+                                <canvas id="camera5-processed-canvas"></canvas>
+                                <button class="fullscreen-btn" data-canvas="camera5-processed-canvas" title="Fullscreen">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/>
+                                    </svg>
+                                </button>
+                                <div class="video-overlay" id="camera5-processed-overlay">
+                                    <div class="loader"></div>
+                                    <p>Waiting for stream...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Camera 6 - Entry Safety Camera -->
+                <section class="camera-section">
+                    <div class="camera-section-header">
+                        <h2>Entry Safety Camera</h2>
+                        <span class="camera-status" id="camera6-status">Offline</span>
+                    </div>
+                    <div class="video-grid">
+                        <div class="video-card">
+                            <div class="video-header">
+                                <h3>Unreal Engine Stream</h3>
+                                <span class="badge badge-blue">Original</span>
+                            </div>
+                            <div class="video-container">
+                                <canvas id="camera6-original-canvas"></canvas>
+                                <button class="fullscreen-btn" data-canvas="camera6-original-canvas" title="Fullscreen">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/>
+                                    </svg>
+                                </button>
+                                <div class="video-overlay" id="camera6-original-overlay">
+                                    <div class="loader"></div>
+                                    <p>Waiting for stream...</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="video-card">
+                            <div class="video-header">
+                                <h3>AI Detection + Safety Zone</h3>
+                                <span class="badge badge-purple">Safety</span>
+                            </div>
+                            <div class="video-container">
+                                <canvas id="camera6-processed-canvas"></canvas>
+                                <button class="fullscreen-btn" data-canvas="camera6-processed-canvas" title="Fullscreen">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/>
+                                    </svg>
+                                </button>
+                                <div class="video-overlay" id="camera6-processed-overlay">
+                                    <div class="loader"></div>
+                                    <p>Waiting for stream...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Barrier State & Plate Recognition Panel -->
+                <div class="barrier-control-panel">
+                    <!-- Entry Barrier State -->
+                    <div class="barrier-state-card">
+                        <div class="barrier-state-header">
+                            <h3>Entry Barrier</h3>
+                            <span class="barrier-state-indicator" id="barrier-state-indicator">IDLE</span>
+                        </div>
+                        <div class="barrier-info-grid">
+                            <div class="barrier-info-item">
+                                <span class="barrier-info-label">Position</span>
+                                <span class="barrier-info-value" id="barrier-position">CLOSED</span>
+                            </div>
+                            <div class="barrier-info-item">
+                                <span class="barrier-info-label">Last Plate</span>
+                                <span class="barrier-info-value barrier-plate-display" id="barrier-last-plate">---</span>
+                            </div>
+                            <div class="barrier-info-item">
+                                <span class="barrier-info-label">Confidence</span>
+                                <span class="barrier-info-value" id="barrier-confidence">-</span>
+                            </div>
+                            <div class="barrier-info-item">
+                                <span class="barrier-info-label">Result</span>
+                                <span class="barrier-info-value" id="barrier-access-result">-</span>
+                            </div>
+                        </div>
+                        <div class="barrier-manual-controls">
+                            <button class="barrier-btn barrier-btn-open" id="barrier-manual-open" title="Manual Open">Open Entry</button>
+                            <button class="barrier-btn barrier-btn-close" id="barrier-manual-close" title="Manual Close">Close Entry</button>
+                        </div>
+                    </div>
+
+                    <!-- Today Statistics -->
+                    <div class="barrier-stats-card">
+                        <h3>Today's Statistics</h3>
+                        <div class="barrier-today-stats">
+                            <div class="barrier-today-stat">
+                                <span class="barrier-today-value" id="barrier-today-entries" style="color: var(--accent-green)">0</span>
+                                <span class="barrier-today-label">Entries</span>
+                            </div>
+                            <div class="barrier-today-stat">
+                                <span class="barrier-today-value" id="barrier-today-denied" style="color: var(--accent-red)">0</span>
+                                <span class="barrier-today-label">Denied</span>
+                            </div>
+                            <div class="barrier-today-stat">
+                                <span class="barrier-today-value" id="barrier-today-inside" style="color: var(--zone-barrier-color)">0</span>
+                                <span class="barrier-today-label">Inside</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- VIEW: Access Management -->
+            <div class="view hidden" id="view-access" data-view="access">
+                <!-- Access Log -->
+                <div class="barrier-log-section">
+                    <div class="barrier-log-header">
+                        <h3>Access Log</h3>
+                    </div>
+                    <div class="barrier-log-container">
+                        <table class="barrier-log-table">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Barrier</th>
+                                    <th>Plate</th>
+                                    <th>Owner</th>
+                                    <th>Confidence</th>
+                                    <th>Result</th>
+                                </tr>
+                            </thead>
+                            <tbody id="barrier-log-body">
+                                <tr><td colspan="6" class="barrier-log-empty">No events yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Plate Management -->
+                <div class="barrier-plates-section">
+                    <div class="barrier-plates-header">
+                        <h3>Allowed Plates</h3>
+                        <div class="barrier-plates-add">
+                            <input type="text" id="barrier-new-plate" placeholder="e.g. A001AA77" maxlength="9">
+                            <input type="text" id="barrier-new-owner" placeholder="Owner name" maxlength="50">
+                            <input type="text" id="barrier-new-desc" placeholder="Vehicle description" maxlength="80">
+                            <button class="barrier-btn barrier-btn-add" id="barrier-add-plate">Add</button>
+                        </div>
+                    </div>
+                    <div class="barrier-plates-list" id="barrier-plates-list">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+            </div>
+
         </main>
 
         <!-- Footer -->
         <footer class="footer">
             <p>Smart Parking Monitor - Diploma Project 2026</p>
-            <p class="footer-tech">FastAPI + YOLO + WebSocket | 4 Cameras | 3 Zones</p>
+            <p class="footer-tech">FastAPI + YOLO + WebSocket + PlateScanner | 6 Cameras | 4 Zones</p>
         </footer>
     </div>
 
@@ -813,6 +1047,6 @@
         <canvas id="fullscreen-canvas"></canvas>
     </div>
 
-    <script src="/static/js/app.js?v=10"></script>
+    <script src="/static/js/app.js?v=11"></script>
 </body>
 </html>
