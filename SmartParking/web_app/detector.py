@@ -3,17 +3,21 @@ Parking Detector Module
 Combines car counting and parking space detection functionality.
 """
 
+import logging
 import math
+import sys
 import time
 import cv2
 import cvzone
 import numpy as np
 import pickle
-import mss
-import win32gui
 from pathlib import Path
 from ultralytics import YOLO
-from sort import Sort
+
+from neosmart.config import get_settings
+from neosmart.tracking.sort import Sort
+
+logger = logging.getLogger(__name__)
 
 
 class ParkingDetector:
@@ -27,87 +31,41 @@ class ParkingDetector:
     MODE_PARKING_SPACES = "parking_spaces"
     MODE_CAR_COUNTER = "car_counter"
 
-    # Wrong parking: % of bbox outside polygon to classify as wrong
-    OUTSIDE_THRESHOLD_DEFAULT = 25
-    OUTSIDE_THRESHOLD_EDGE = 45
-
-    # Per-camera default threshold overrides
-    OUTSIDE_THRESHOLD_PER_CAMERA = {
-        "camera2": 31,
-        "camera3": 36,
-    }
-
-    # Per-camera edge polygon indices (fish-eye distortion → higher threshold)
-    # camera1: first 2 (left edge) and last 2 (right edge)
-    # camera2: last 2 (far edge)
-    EDGE_INDICES = {
-        "camera1": lambda n: {0, 1, n - 2, n - 1},
-        "camera2": lambda n: {n - 2, n - 1},
-    }
-
-    # Per-camera per-index threshold overrides (takes priority over edge/default)
-    OUTSIDE_THRESHOLD_OVERRIDES = {
-        "camera1": lambda n: {0: 52, 1: 52},
-        "camera3": lambda n: {0: 46, 1: 46},
-    }
-
-    CAMERA_IDS = ["camera1", "camera2", "camera3", "camera4", "camera5", "camera6"]
-
-    # Road cameras (traffic counting, no parking spaces)
-    ROAD_CAMERA_IDS = ["camera4"]
-
-    # Cameras that use SORT tracking (paid zone only)
-    TRACKING_CAMERA_IDS = ["camera3"]
-
-    # Barrier cameras (plate recognition + barrier control, no parking logic)
-    BARRIER_CAMERA_IDS = ["camera5", "camera6"]
-
-    # SORT tracker parameters
-    SORT_MAX_AGE = 20       # frames to keep a track alive without detections
-    SORT_MIN_HITS = 5       # min detections before track is confirmed
-    SORT_IOU_THRESHOLD = 0.3
-
-    # Suspicious parking: time threshold in seconds
-    SUSPICIOUS_TIME_THRESHOLD = 30
-
-    # Traffic counting: SORT parameters for road cameras
-    TRAFFIC_SORT_MAX_AGE = 50      # keep tracks alive longer (cars may be briefly occluded)
-    TRAFFIC_SORT_MIN_HITS = 0      # show track on creation frame (hit_streak>=0 is always true)
-    TRAFFIC_SORT_IOU_THRESHOLD = 0.15  # lenient matching to survive detection gaps
-
-    # Fallback crossing regions (used only if no calibration pickle exists)
-    CROSSING_REGIONS_FALLBACK = {
-        "camera4": {
-            "incoming": [[400, 350], [600, 350], [600, 380], [400, 380]],
-            "outgoing": [[400, 450], [600, 450], [600, 480], [400, 480]],
-        }
-    }
-
     def __init__(self, model_path: str = None):
         """
         Initialize the parking detector with per-camera polygon support.
 
         Args:
-            model_path: Path to YOLO model file
+            model_path: Path to YOLO model file (defaults to settings.paths.car_detector)
         """
-        base_dir = Path(__file__).parent
-        parking_dir = base_dir.parent / "CarParkingSpace"
+        self._settings = get_settings()
+        paths = self._settings.paths
+        tracking = self._settings.tracking
+
+        self.camera_ids = self._settings.camera_ids
+        self.road_camera_ids = self._settings.road_camera_ids
+        self.tracking_camera_ids = self._settings.tracking_camera_ids
+        self.barrier_camera_ids = self._settings.barrier_camera_ids
+        self.suspicious_time_threshold = tracking.suspicious_time_threshold
+
+        parking_dir = paths.resolve(paths.parking_polygons_dir)
+        traffic_dir = paths.resolve(paths.traffic_crossing_dir)
 
         if model_path is None:
-            model_path = str(base_dir.parent.parent / "Models" / "Car_Detector.pt")
+            model_path = str(paths.resolve(paths.car_detector))
 
         self.model = YOLO(model_path)
         self.class_names = ["car"]
-        self.confidence = 0.65
+        self.confidence = self._settings.detector.confidence
 
         # Per-camera polygons and stats
         self.camera_polygons = {}
         self.camera_total_spaces = {}
         self.camera_stats = {}
 
-        for cam_id in self.CAMERA_IDS:
+        for cam_id in self.camera_ids:
             # Barrier cameras don't have parking spaces (handled by BarrierController)
-            if cam_id in self.BARRIER_CAMERA_IDS:
+            if cam_id in self.barrier_camera_ids:
                 self.camera_polygons[cam_id] = []
                 self.camera_total_spaces[cam_id] = 0
                 self.camera_stats[cam_id] = {
@@ -117,11 +75,11 @@ class ParkingDetector:
                     "cars_detected": 0,
                     "wrong_count": 0
                 }
-                print(f"Barrier camera {cam_id} initialized (plate recognition mode)")
+                logger.info("Barrier camera %s initialized (plate recognition mode)", cam_id)
                 continue
 
             # Road cameras don't have parking spaces
-            if cam_id in self.ROAD_CAMERA_IDS:
+            if cam_id in self.road_camera_ids:
                 self.camera_polygons[cam_id] = []
                 self.camera_total_spaces[cam_id] = 0
                 self.camera_stats[cam_id] = {
@@ -131,7 +89,7 @@ class ParkingDetector:
                     "cars_detected": 0,
                     "wrong_count": 0
                 }
-                print(f"Road camera {cam_id} initialized (traffic counting only)")
+                logger.info("Road camera %s initialized (traffic counting only)", cam_id)
                 continue
 
             polygons = []
@@ -142,16 +100,17 @@ class ParkingDetector:
                 try:
                     with open(cam_file, 'rb') as f:
                         polygons = pickle.load(f)
-                    print(f"Loaded {len(polygons)} polygons for {cam_id}")
-                except Exception as e:
-                    print(f"Warning: Could not load {cam_file}: {e}")
+                    logger.info("Loaded %d polygons for %s", len(polygons), cam_id)
+                except Exception:
+                    logger.exception("Could not load %s", cam_file)
             elif fallback_file.exists():
                 try:
                     with open(fallback_file, 'rb') as f:
                         polygons = pickle.load(f)
-                    print(f"Loaded {len(polygons)} polygons from fallback for {cam_id}")
-                except Exception as e:
-                    print(f"Warning: Could not load {fallback_file}: {e}")
+                    logger.info("Loaded %d polygons from fallback for %s",
+                                len(polygons), cam_id)
+                except Exception:
+                    logger.exception("Could not load %s", fallback_file)
 
             total = len(polygons) if polygons else 12
             self.camera_polygons[cam_id] = polygons
@@ -186,16 +145,18 @@ class ParkingDetector:
         self.camera_track_times = {}  # {cam_id: {track_id: first_seen_timestamp}}
         self.camera_display_ids = {}  # {cam_id: {sort_id: display_id}}
         self.camera_next_display_id = {}  # {cam_id: next_id}
-        for cam_id in self.TRACKING_CAMERA_IDS:
+        for cam_id in self.tracking_camera_ids:
             self.camera_trackers[cam_id] = Sort(
-                max_age=self.SORT_MAX_AGE,
-                min_hits=self.SORT_MIN_HITS,
-                iou_threshold=self.SORT_IOU_THRESHOLD
+                max_age=tracking.sort_max_age,
+                min_hits=tracking.sort_min_hits,
+                iou_threshold=tracking.sort_iou_threshold,
             )
             self.camera_track_times[cam_id] = {}
             self.camera_display_ids[cam_id] = {}
             self.camera_next_display_id[cam_id] = 1
-        print(f"SORT trackers initialized for {self.TRACKING_CAMERA_IDS} (suspicious threshold: {self.SUSPICIOUS_TIME_THRESHOLD}s)")
+        if self.tracking_camera_ids:
+            logger.info("SORT trackers initialized for %s (suspicious threshold: %ds)",
+                        self.tracking_camera_ids, self.suspicious_time_threshold)
 
         # SORT trackers for traffic counting (road cameras)
         self.traffic_trackers = {}
@@ -204,22 +165,28 @@ class ParkingDetector:
         self.traffic_crossed = {}   # {cam_id: {"incoming": set(), "outgoing": set()}}
         self.traffic_counts = {}    # {cam_id: {"incoming": int, "outgoing": int}}
         self.traffic_flash_times = {}  # {cam_id: {"incoming": timestamp, "outgoing": timestamp}}
-        for cam_id in self.ROAD_CAMERA_IDS:
+        for cam_id in self.road_camera_ids:
             self.traffic_trackers[cam_id] = Sort(
-                max_age=self.TRAFFIC_SORT_MAX_AGE,
-                min_hits=self.TRAFFIC_SORT_MIN_HITS,
-                iou_threshold=self.TRAFFIC_SORT_IOU_THRESHOLD
+                max_age=tracking.traffic_sort_max_age,
+                min_hits=tracking.traffic_sort_min_hits,
+                iou_threshold=tracking.traffic_sort_iou_threshold,
             )
             self.traffic_display_ids[cam_id] = {}
             self.traffic_next_display_id[cam_id] = 1
             self.traffic_crossed[cam_id] = {"incoming": set(), "outgoing": set()}
             self.traffic_counts[cam_id] = {"incoming": 0, "outgoing": 0}
             self.traffic_flash_times[cam_id] = {"incoming": 0.0, "outgoing": 0.0}
-        # Load crossing regions from pickle or use fallback
-        traffic_dir = base_dir.parent / "TrafficCounting"
+
+        # Load crossing regions from pickle or use configured fallback
+        fallback_regions = self._settings.crossing_regions_fallback
         self.crossing_regions = {}
-        for cam_id in self.ROAD_CAMERA_IDS:
+        for cam_id in self.road_camera_ids:
             crossing_file = traffic_dir / f"{cam_id}_crossing.p"
+            fallback = fallback_regions.get(cam_id)
+            fallback_dict = (
+                {"incoming": fallback.incoming, "outgoing": fallback.outgoing}
+                if fallback is not None else {}
+            )
             if crossing_file.exists():
                 try:
                     with open(crossing_file, "rb") as f:
@@ -228,17 +195,21 @@ class ParkingDetector:
                         "incoming": data["incoming"],
                         "outgoing": data["outgoing"],
                     }
-                    print(f"Loaded crossing regions for {cam_id} from {crossing_file}")
-                except Exception as e:
-                    print(f"Warning: Could not load {crossing_file}: {e}")
-                    self.crossing_regions[cam_id] = self.CROSSING_REGIONS_FALLBACK.get(cam_id, {})
+                    logger.info("Loaded crossing regions for %s from %s",
+                                cam_id, crossing_file)
+                except Exception:
+                    logger.exception("Could not load %s", crossing_file)
+                    self.crossing_regions[cam_id] = fallback_dict
             else:
-                self.crossing_regions[cam_id] = self.CROSSING_REGIONS_FALLBACK.get(cam_id, {})
-                print(f"No calibration for {cam_id}, using fallback regions. "
-                      f"Run TrafficCounting/mark_crossing_regions.py to calibrate.")
+                self.crossing_regions[cam_id] = fallback_dict
+                logger.warning(
+                    "No calibration for %s, using fallback regions. "
+                    "Run TrafficCounting/mark_crossing_regions.py to calibrate.",
+                    cam_id,
+                )
 
-        if self.ROAD_CAMERA_IDS:
-            print(f"Traffic trackers initialized for {self.ROAD_CAMERA_IDS}")
+        if self.road_camera_ids:
+            logger.info("Traffic trackers initialized for %s", self.road_camera_ids)
 
     def set_mode(self, mode: str):
         """Set detection mode."""
@@ -252,6 +223,10 @@ class ParkingDetector:
         Returns:
             dict with top, left, width, height or None if not found
         """
+        if sys.platform != "win32":
+            return None
+        import win32gui
+
         def enum_windows_callback(hwnd, windows):
             if win32gui.IsWindowVisible(hwnd):
                 window_title = win32gui.GetWindowText(hwnd)
@@ -273,7 +248,7 @@ class ParkingDetector:
             hwnd, title = windows[0]
 
             if not self._window_found_before or self._last_found_window_title != title:
-                print(f"Found Unreal Engine window: {title}")
+                logger.info("Found Unreal Engine window: %s", title)
                 self._last_found_window_title = title
                 self._window_found_before = True
 
@@ -290,7 +265,7 @@ class ParkingDetector:
             }
         else:
             if self._window_found_before:
-                print("Unreal Engine window lost")
+                logger.info("Unreal Engine window lost")
                 self._window_found_before = False
                 self._last_found_window_title = ""
 
@@ -303,6 +278,10 @@ class ParkingDetector:
         Returns:
             numpy.ndarray in BGR format or None if capture fails
         """
+        if sys.platform != "win32":
+            return None
+        import mss
+
         window_region = self.find_unreal_window()
 
         if window_region is None:
@@ -314,8 +293,8 @@ class ParkingDetector:
                 img = np.array(screenshot)
                 img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
                 return img
-        except Exception as e:
-            print(f"Error capturing window: {e}")
+        except Exception:
+            logger.exception("Error capturing window")
             return None
 
     def detect_cars(self, img: np.ndarray, draw: bool = True) -> list:
@@ -360,15 +339,7 @@ class ParkingDetector:
 
     def _get_threshold(self, camera_id: str, index: int, total: int) -> float:
         """Get wrong-parking threshold for a polygon by camera and index."""
-        override_fn = self.OUTSIDE_THRESHOLD_OVERRIDES.get(camera_id)
-        if override_fn:
-            overrides = override_fn(total)
-            if index in overrides:
-                return overrides[index]
-        edge_fn = self.EDGE_INDICES.get(camera_id)
-        if edge_fn and index in edge_fn(total):
-            return self.OUTSIDE_THRESHOLD_EDGE
-        return self.OUTSIDE_THRESHOLD_PER_CAMERA.get(camera_id, self.OUTSIDE_THRESHOLD_DEFAULT)
+        return self._settings.wrong_parking.resolve_threshold(camera_id, index, total)
 
     def overlay_parking_spaces(self, img: np.ndarray, object_list: list,
                                polygons: list = None,
@@ -521,7 +492,7 @@ class ParkingDetector:
 
                 start_time, _ = track_times[display_id]
                 elapsed = now - start_time
-                is_suspicious = elapsed >= self.SUSPICIOUS_TIME_THRESHOLD
+                is_suspicious = elapsed >= self.suspicious_time_threshold
 
                 if is_suspicious:
                     suspicious_count += 1
@@ -577,7 +548,7 @@ class ParkingDetector:
         if is_suspicious:
             box_x = x2 + 5
             box_y = y1
-            overtime = elapsed - self.SUSPICIOUS_TIME_THRESHOLD
+            overtime = elapsed - self.suspicious_time_threshold
             ot_min = int(overtime) // 60
             ot_sec = int(overtime) % 60
             ot_str = f"{ot_min}:{ot_sec:02d}" if ot_min > 0 else f"{ot_sec}s"
@@ -723,7 +694,7 @@ class ParkingDetector:
         """
         # Barrier cameras: detection only, no parking/tracking logic
         # (BarrierController handles the rest in main.py)
-        if camera_id in self.BARRIER_CAMERA_IDS:
+        if camera_id in self.barrier_camera_ids:
             object_list = self.detect_cars(img, draw=True)
             stats = {
                 "total_spaces": 0,
@@ -757,12 +728,12 @@ class ParkingDetector:
 
         # Run SORT tracking (paid zone only)
         tracked_count, suspicious_count = 0, 0
-        if camera_id in self.TRACKING_CAMERA_IDS:
+        if camera_id in self.tracking_camera_ids:
             tracked_count, suspicious_count = self._update_tracking(img, object_list, camera_id)
 
         # Run traffic counting (road cameras)
         incoming_count, outgoing_count = 0, 0
-        if camera_id in self.ROAD_CAMERA_IDS:
+        if camera_id in self.road_camera_ids:
             traffic = self._update_traffic_tracking(img, object_list, camera_id)
             incoming_count = traffic["incoming"]
             outgoing_count = traffic["outgoing"]

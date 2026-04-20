@@ -1,0 +1,104 @@
+# NeoSmart — default configuration.
+#
+# Precedence: env vars (NEOSMART_*)  >  .env file  >  this file  >  code defaults.
+# Local overrides go in config/development.yaml (loaded explicitly when needed)
+# or via environment variables with the NEOSMART_ prefix and __ as the nesting
+# delimiter (e.g. NEOSMART_DETECTOR__CONFIDENCE=0.5).
+
+paths:
+  # Repo-relative paths. Absolute paths also work.
+  frames_dir: SmartParking/frames
+  models_dir: Models
+  car_detector: Models/Car_Detector.pt
+  plate_scanner_dir: Models/plate_scanner
+  parking_polygons_dir: SmartParking/CarParkingSpace
+  barrier_zones_dir: SmartParking/BarrierSystem
+  traffic_crossing_dir: SmartParking/TrafficCounting
+  wrong_parking_calib_dir: SmartParking/WrongParking
+  db_path: SmartParking/web_app/data/barrier.db
+  seed_plates: SmartParking/web_app/data/seed_plates.json
+  logs_dir: logs
+
+# Declarative camera roles. Derived collections (CAMERA_IDS, TRACKING_CAMERA_IDS,
+# ROAD_CAMERA_IDS, BARRIER_CAMERA_IDS) are computed from this map at runtime.
+cameras:
+  camera1: { role: parking }
+  camera2: { role: parking }
+  camera3: { role: parking, tracking: true }
+  camera4: { role: road }
+  camera5: { role: barrier_plate }
+  camera6: { role: barrier_safety }
+
+detector:
+  # Car YOLO model confidence (detector.py used to hardcode 0.65).
+  confidence: 0.65
+  # PlateScanner YOLO confidence for license plate detection.
+  plate_confidence: 0.3
+
+tracking:
+  # SORT params for paid-zone suspicious-parking tracker.
+  sort_max_age: 20
+  sort_min_hits: 5
+  sort_iou_threshold: 0.3
+  # Seconds a car must sit in the same spot to be flagged suspicious.
+  suspicious_time_threshold: 30.0
+  # SORT params for traffic counter (camera4) — tuned leniently to survive
+  # brief occlusions on the road zone.
+  traffic_sort_max_age: 50
+  traffic_sort_min_hits: 0
+  traffic_sort_iou_threshold: 0.15
+
+wrong_parking:
+  # Percent of bbox outside polygon to classify the parking as wrong.
+  outside_threshold_default: 25
+  # Higher threshold for polygons near image edges (fisheye distortion).
+  outside_threshold_edge: 45
+  # Per-camera default override (applied when no edge/index rule matches).
+  per_camera_default:
+    camera2: 31
+    camera3: 36
+  # Edge-polygon rules — "first_n" picks indices [0..first_n); "last_n"
+  # picks indices [total-last_n..total). These polygons use
+  # outside_threshold_edge. (camera1 has distortion on both sides;
+  # camera2 only on the far edge.)
+  edge_polygon_rules:
+    camera1: { first_n: 2, last_n: 2 }
+    camera2: { last_n: 2 }
+  # Explicit per-index threshold overrides (highest priority, beats edge/default).
+  index_overrides:
+    camera1:
+      - { indices: [0, 1], threshold: 52 }
+    camera3:
+      - { indices: [0, 1], threshold: 46 }
+
+barrier:
+  # OCR consensus needed to auto-grant/deny access while the car is
+  # still in the reading zone.
+  plate_min_agreeing_reads: 3
+  plate_confidence_threshold: 0.3
+  # UI/state timeouts (seconds).
+  access_denied_timeout: 5.0
+  safety_zone_clear_delay: 1.0
+  barrier_open_timeout: 30.0
+  safety_grace_period: 3.0
+  # Max wait for UE5 animation-complete ack (failsafe; animations are
+  # sub-second so these should never trip in practice).
+  barrier_opening_timeout: 30.0
+  barrier_closing_timeout: 30.0
+  # Recent events kept in memory for the dashboard.
+  max_recent_events: 20
+  # Camera role routing for the entry barrier.
+  entry_plate_camera: camera5
+  entry_safety_camera: camera6
+
+# Fallback crossing regions — used by TrafficCounter only when no calibration
+# pickle (camera4_crossing.p) is present.
+crossing_regions_fallback:
+  camera4:
+    incoming: [[400, 350], [600, 350], [600, 380], [400, 380]]
+    outgoing: [[400, 450], [600, 450], [600, 480], [400, 480]]
+
+# Logging — JSON lines to file, human to console.
+logging:
+  level: INFO
+  json_to_file: true

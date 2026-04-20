@@ -7,6 +7,7 @@ Supports multiple cameras.
 import asyncio
 import base64
 import json
+import logging
 import os
 import pickle
 import cv2
@@ -23,18 +24,27 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
+from neosmart.config import get_settings
+from neosmart.logging_setup import configure_logging, print_banner, print_section
+
 from detector import ParkingDetector, create_placeholder_image
 from barrier_controller import BarrierController
 from barrier_db import BarrierDatabase
+
+_settings = get_settings()
+configure_logging(_settings)
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     """Pre-load the detector and barrier controllers at server startup."""
-    print("Pre-loading detector at startup...")
+    print_section("Detector")
     get_detector()
+    print_section("Barrier System")
     init_barrier_controllers()
-    print("Server ready for connections.")
+    print_section("Ready")
+    logger.info("Server ready — dashboard at http://localhost:8000")
     yield
 
 
@@ -66,17 +76,17 @@ class ImmutableStaticFiles(StaticFiles):
 app.mount("/static", ImmutableStaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
-FRAMES_DIR = Path("E:/Work/Computer_Vision/Projects/NeoSmart/SmartParking/frames")
+FRAMES_DIR = _settings.paths.resolve(_settings.paths.frames_dir)
 
-CAMERA_IDS = ["camera1", "camera2", "camera3", "camera4", "camera5", "camera6"]
+CAMERA_IDS = _settings.camera_ids
 
-FRAME_PATHS = {cam_id: FRAMES_DIR / f"{cam_id}.png" for cam_id in CAMERA_IDS}
+FRAME_PATHS = {cam_id: _settings.frame_path(cam_id) for cam_id in CAMERA_IDS}
 
-BARRIER_CAMERA_IDS = ["camera5", "camera6"]
+BARRIER_CAMERA_IDS = _settings.barrier_camera_ids
 
 # Barrier camera roles
-ENTRY_PLATE_CAMERA = "camera5"    # Plate recognition for entry barrier
-ENTRY_SAFETY_CAMERA = "camera6"   # Safety zone monitoring for entry barrier
+ENTRY_PLATE_CAMERA = _settings.barrier.entry_plate_camera      # Plate recognition for entry barrier
+ENTRY_SAFETY_CAMERA = _settings.barrier.entry_safety_camera    # Safety zone monitoring for entry barrier
 
 
 class FrameStorage:
@@ -95,9 +105,7 @@ def get_detector() -> ParkingDetector:
     """Get or create the shared detector instance."""
     global detector
     if detector is None:
-        print("Initializing parking detector...")
         detector = ParkingDetector()
-        print("Detector ready!")
     return detector
 
 
@@ -119,7 +127,7 @@ def init_barrier_controllers():
 
     barrier_db = BarrierDatabase()
     barrier_db.reset_runtime_state()
-    print(f"[Barrier] Database initialized")
+    logger.info("[Barrier] Database initialized")
 
     # Try to load PlateRecognizer (may fail if models not downloaded yet).
     # eager_load=True forces YOLO + parseq to download/JIT NOW so the first
@@ -131,7 +139,7 @@ def init_barrier_controllers():
     # is unchanged in both modes.
     use_tflite = os.getenv("USE_TFLITE", "0") == "1"
     if use_tflite:
-        print("[Barrier] USE_TFLITE=1 — plate detector will run FP16 TFLite (edge mode)")
+        logger.info("[Barrier] USE_TFLITE=1 — plate detector will run FP16 TFLite (edge mode)")
 
     plate_recognizer = None
     try:
@@ -148,9 +156,11 @@ def init_barrier_controllers():
             eager_load=True,
             use_tflite=use_tflite,
         )
-    except Exception as e:
-        print(f"[Barrier] Warning: PlateRecognizer not available: {e}")
-        print("[Barrier] Barrier system will run without plate recognition")
+    except Exception:
+        logger.exception(
+            "[Barrier] PlateRecognizer not available — "
+            "barrier system will run without plate recognition"
+        )
 
     barrier_dir = Path(__file__).parent.parent / "BarrierSystem"
 
@@ -165,12 +175,15 @@ def init_barrier_controllers():
                 data = pickle.load(f)
             entry_zones["approach_zone"] = data.get("approach")
             entry_zones["reading_zone"] = data.get("reading")
-            print(f"[Barrier] Entry: loaded approach+reading zones from {cam5_file}")
-        except Exception as e:
-            print(f"[Barrier] Warning: Could not load {cam5_file}: {e}")
+            logger.info("[Barrier] Entry: loaded approach+reading zones from %s", cam5_file)
+        except Exception:
+            logger.exception("[Barrier] Could not load %s", cam5_file)
     else:
-        print(f"[Barrier] No zone calibration for {ENTRY_PLATE_CAMERA}. "
-              f"Run BarrierSystem/mark_barrier_zones.py (mode: Plate camera)")
+        logger.warning(
+            "[Barrier] No zone calibration for %s. "
+            "Run BarrierSystem/mark_barrier_zones.py (mode: Plate camera)",
+            ENTRY_PLATE_CAMERA,
+        )
 
     # Load safety camera zones (camera6)
     cam6_file = barrier_dir / f"{ENTRY_SAFETY_CAMERA}_barrier.p"
@@ -179,12 +192,15 @@ def init_barrier_controllers():
             with open(cam6_file, "rb") as f:
                 data = pickle.load(f)
             entry_zones["safety_zone"] = data.get("safety")
-            print(f"[Barrier] Entry: loaded safety zone from {cam6_file}")
-        except Exception as e:
-            print(f"[Barrier] Warning: Could not load {cam6_file}: {e}")
+            logger.info("[Barrier] Entry: loaded safety zone from %s", cam6_file)
+        except Exception:
+            logger.exception("[Barrier] Could not load %s", cam6_file)
     else:
-        print(f"[Barrier] No zone calibration for {ENTRY_SAFETY_CAMERA}. "
-              f"Run BarrierSystem/mark_barrier_zones.py (mode: Safety camera)")
+        logger.warning(
+            "[Barrier] No zone calibration for %s. "
+            "Run BarrierSystem/mark_barrier_zones.py (mode: Safety camera)",
+            ENTRY_SAFETY_CAMERA,
+        )
 
     if plate_recognizer is not None:
         entry_ctrl = BarrierController(
@@ -197,7 +213,7 @@ def init_barrier_controllers():
         )
         barrier_controllers["entry"] = entry_ctrl
     else:
-        print("[Barrier] Skipping entry controller (no plate recognizer)")
+        logger.warning("[Barrier] Skipping entry controller (no plate recognizer)")
 
 
 class ConnectionManager:
@@ -268,7 +284,7 @@ async def receive_frame(request: Request):
         camera_id = data.get("camera_id", "camera1")
 
         if camera_id not in CAMERA_IDS:
-            print(f"[FRAME] Rejected unknown camera_id='{camera_id}', data={data}")
+            logger.warning("[FRAME] Rejected unknown camera_id=%r, data=%s", camera_id, data)
             return JSONResponse(
                 {"error": f"Unknown camera_id: {camera_id}", "valid_ids": CAMERA_IDS},
                 status_code=400
@@ -310,8 +326,7 @@ async def receive_frame(request: Request):
         return {"status": "ok", "camera_id": camera_id, "frame_count": storage.frame_count}
 
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        logger.exception("[FRAME] Error handling frame upload")
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
@@ -415,7 +430,7 @@ async def barrier_manual_control(barrier_id: str, request: Request):
 async def websocket_stream(websocket: WebSocket):
     """WebSocket endpoint for video streaming."""
     await manager.connect(websocket)
-    print(f"[WS] Client connected. Total: {len(manager.active_connections)}")
+    logger.info("[WS] Client connected. Total: %d", len(manager.active_connections))
 
     try:
         det = get_detector()
@@ -431,7 +446,7 @@ async def websocket_stream(websocket: WebSocket):
                     if new_mode in [ParkingDetector.MODE_PARKING_SPACES,
                                    ParkingDetector.MODE_CAR_COUNTER]:
                         det.set_mode(new_mode)
-                        print(f"[WS] Mode changed to: {new_mode}")
+                        logger.info("[WS] Mode changed to: %s", new_mode)
 
                 elif message.get("type") == "barrier_command":
                     bid = message.get("barrier_id")
@@ -449,14 +464,12 @@ async def websocket_stream(websocket: WebSocket):
 
     except WebSocketDisconnect:
         pass
-    except Exception as e:
-        print(f"[WS] Error in websocket handler: {e}")
-        import traceback
-        traceback.print_exc()
+    except Exception:
+        logger.exception("[WS] Error in websocket handler")
     finally:
         streaming_task.cancel()
         manager.disconnect(websocket)
-        print(f"[WS] Client disconnected. Total: {len(manager.active_connections)}")
+        logger.info("[WS] Client disconnected. Total: %d", len(manager.active_connections))
 
 
 async def stream_frames(websocket: WebSocket, det: ParkingDetector):
@@ -567,8 +580,8 @@ async def stream_frames(websocket: WebSocket, det: ParkingDetector):
 
             await asyncio.sleep(frame_interval)
 
-        except Exception as e:
-            print(f"[WS] Streaming error: {e}")
+        except Exception:
+            logger.exception("[WS] Streaming error")
             await asyncio.sleep(1)
             break
 
@@ -591,19 +604,13 @@ def main():
     if args.tflite:
         os.environ["USE_TFLITE"] = "1"
 
-    print("=" * 60)
-    print("  Smart Parking Monitor (Multi-Camera + Barrier Control)")
-    print("=" * 60)
-    print()
-    print(f"  Frames directory: {FRAMES_DIR}")
-    print(f"  Cameras: {', '.join(CAMERA_IDS)}")
+    print_banner("Smart Parking Monitor · Multi-Camera + Barrier Control · v2.0.0")
+    print_section("Configuration")
+    logger.info("Frames directory: %s", FRAMES_DIR)
+    logger.info("Cameras: %s", ", ".join(CAMERA_IDS))
     for cam_id, path in FRAME_PATHS.items():
-        print(f"    {cam_id}: {path}")
-    print()
-    print("  Open http://localhost:8000 in your browser")
-    print()
-    print("  Press Ctrl+C to stop")
-    print("=" * 60)
+        logger.info("  ▸ %s  %s", cam_id, path)
+    logger.info("Dashboard: http://localhost:8000  (Ctrl+C to stop)")
 
     uvicorn.run(
         "main:app",

@@ -1,9 +1,15 @@
+# Trained model weights (too large / regenerated from training runs)
 Models/Car_Detector.pt
 yolo_car_detector.pt
 Models/yolov8x.pt
 Models/plate_scanner/
+
+# SQLite runtime state
 SmartParking/web_app/data/*.db
+
+# Training / validation datasets (external, Roboflow-sourced)
 Validation/data
+Validation/data2
 Training/data
 Training/data2
 Training/output_images
@@ -11,12 +17,32 @@ Training/raw
 Training/runs
 Training/yolo11n.pt
 Training/yolov8s.pt
-Validation/data
-Validation/data2
+
+# UE5-exported frames (runtime)
+frames/
+
+# Runtime logs
+logs/
+
+# Python build / cache
+__pycache__/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtualenv / editor
 .venv
 .idea/
-.idea/
-frames/
-__pycache__/
+
+# Secrets / local config (ship *.example instead)
+.env
+.clearml.conf
+
+# Agent / assistant state
 CLAUDE.md
 .claude

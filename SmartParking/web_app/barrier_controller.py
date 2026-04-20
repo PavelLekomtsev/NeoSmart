@@ -4,6 +4,7 @@ State machine for managing parking barrier entry/exit with plate recognition.
 """
 
 import time
+import logging
 import cv2
 import numpy as np
 from collections import deque
@@ -11,6 +12,8 @@ from pathlib import Path
 
 from plate_scanner import PlateRecognizer
 from barrier_db import BarrierDatabase
+
+logger = logging.getLogger(__name__)
 
 
 # --- State Machine Constants ---
@@ -118,8 +121,8 @@ class BarrierController:
         self._manual_override = None    # "open" or "close" or None
 
         safety_label = f", safety from {safety_camera_id}" if safety_camera_id else ""
-        print(f"[Barrier:{barrier_id}] Controller initialized for {camera_id}"
-              f"{safety_label}")
+        logger.info("[%s] Controller initialized for %s%s",
+                    barrier_id, camera_id, safety_label)
 
     @staticmethod
     def _to_polygon(points: list) -> np.ndarray | None:
@@ -271,9 +274,11 @@ class BarrierController:
             # causing UE5 to drop the close command. ack_from_ue5() advances.
             self.barrier_command = "open"
             if elapsed_in_state > BARRIER_OPENING_TIMEOUT:
-                print(f"[Barrier:{self.barrier_id}] WARN: BARRIER_OPENING timed "
-                      f"out after {BARRIER_OPENING_TIMEOUT:.0f}s with no "
-                      f"open_complete ack — forcing advance")
+                logger.warning(
+                    "[%s] BARRIER_OPENING timed out after %.0fs with no "
+                    "open_complete ack — forcing advance",
+                    self.barrier_id, BARRIER_OPENING_TIMEOUT,
+                )
                 self.barrier_position = "open"
                 self.barrier_command = "idle"
                 self._set_state(STATE_CAR_PASSING)
@@ -313,9 +318,11 @@ class BarrierController:
             # the UE5 poll loop multiple chances to pick up the command.
             self.barrier_command = "close"
             if elapsed_in_state > BARRIER_CLOSING_TIMEOUT:
-                print(f"[Barrier:{self.barrier_id}] WARN: BARRIER_CLOSING timed "
-                      f"out after {BARRIER_CLOSING_TIMEOUT:.0f}s with no "
-                      f"close_complete ack — forcing advance")
+                logger.warning(
+                    "[%s] BARRIER_CLOSING timed out after %.0fs with no "
+                    "close_complete ack — forcing advance",
+                    self.barrier_id, BARRIER_CLOSING_TIMEOUT,
+                )
                 self.barrier_position = "closed"
                 self.barrier_command = "idle"
                 self._set_state(STATE_IDLE)
@@ -369,8 +376,10 @@ class BarrierController:
             "barrier_id": self.barrier_id,
         })
 
-        print(f"[Barrier:{self.barrier_id}] INSTANT GRANT  plate={plate_text!r}  "
-              f"conf={confidence:.2f}  (after {len(self.ocr_buffer)} reading(s))")
+        logger.info(
+            "[%s] INSTANT GRANT plate=%r conf=%.2f (after %d reading(s))",
+            self.barrier_id, plate_text, confidence, len(self.ocr_buffer),
+        )
 
         self._set_state(STATE_ACCESS_GRANTED)
 
@@ -501,17 +510,21 @@ class BarrierController:
                 self.barrier_command = "idle"
                 self._set_state(STATE_CAR_PASSING)
             else:
-                print(f"[Barrier:{self.barrier_id}] WARN: got open_complete "
-                      f"ack in state {self.state!r} — ignoring (state machine "
-                      f"already advanced)")
+                logger.warning(
+                    "[%s] got open_complete ack in state %r — ignoring "
+                    "(state machine already advanced)",
+                    self.barrier_id, self.state,
+                )
         elif event == "close_complete":
             if self.state == STATE_BARRIER_CLOSING:
                 self.barrier_position = "closed"
                 self.barrier_command = "idle"
                 self._set_state(STATE_IDLE)
             else:
-                print(f"[Barrier:{self.barrier_id}] WARN: got close_complete "
-                      f"ack in state {self.state!r} — ignoring")
+                logger.warning(
+                    "[%s] got close_complete ack in state %r — ignoring",
+                    self.barrier_id, self.state,
+                )
 
     # --- Overlay Drawing ---
 

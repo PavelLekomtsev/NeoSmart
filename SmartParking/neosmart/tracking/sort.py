@@ -1,8 +1,12 @@
 """
-SORT: Simple Online and Realtime Tracking
-Kalman filter-based multi-object tracker.
-Adapted from https://github.com/abewley/sort
+SORT: Simple Online and Realtime Tracking.
+
+Kalman filter-based multi-object tracker. Adapted from
+https://github.com/abewley/sort (MIT). Single source of truth — all callers
+(web app, legacy scripts, tests) import `Sort` from here.
 """
+
+from __future__ import annotations
 
 import numpy as np
 from filterpy.kalman import KalmanFilter

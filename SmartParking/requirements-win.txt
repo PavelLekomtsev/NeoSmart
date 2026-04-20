@@ -1,0 +1,11 @@
+# Windows-only extras for the legacy capture tools under
+# SmartParking/legacy/ (car_counter, suspicious_car_detector,
+# wrong_parking_advanced). The web app itself reads frames from
+# SmartParking/frames/ and does NOT need these packages.
+#
+# Install on top of the core requirements:
+#   pip install -r SmartParking/requirements.txt
+#   pip install -r SmartParking/requirements-win.txt
+
+mss==10.0.0
+pywin32==310

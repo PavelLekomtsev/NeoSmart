@@ -1,0 +1,130 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "neosmart"
+version = "0.2.0"
+description = "Smart parking management system: YOLO car detection, SORT tracking, license-plate barrier access, FastAPI dashboard, Unreal Engine 5 integration."
+authors = [{ name = "Pavel Lekomtsev" }]
+requires-python = ">=3.11"
+readme = "README.md"
+license = { text = "Proprietary" }
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Topic :: Scientific/Engineering :: Image Recognition",
+]
+
+[project.urls]
+Repository = "https://github.com/PavelLekomtsev/NeoSmart"
+
+# The importable package lives at SmartParking/neosmart/ rather than
+# at the repo root. This keeps the historical directory layout (web_app,
+# BarrierSystem, CarParkingSpace, ... all under SmartParking/) while
+# giving us a proper Python package for shared code.
+[tool.setuptools]
+package-dir = { "" = "SmartParking" }
+
+[tool.setuptools.packages.find]
+where = ["SmartParking"]
+include = ["neosmart*"]
+
+[tool.setuptools.package-data]
+neosmart = ["py.typed"]
+
+# ----------------------------------------------------------------------
+# Ruff — linter + formatter (replaces black + isort + flake8).
+# ----------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = [
+    ".venv",
+    "SmartParking/PlateScanner",  # git submodule, upstream owns its style
+    "Training/runs",
+    "Validation/reports",
+    "notebooks",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "UP",   # pyupgrade
+    "SIM",  # flake8-simplify
+    "RUF",  # ruff-specific
+]
+ignore = [
+    "E501",   # line length — handled by formatter
+    "B008",   # function call in arg defaults (FastAPI `Depends(...)` idiom)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["B011"]                         # assert False is fine in tests
+"SmartParking/legacy/**" = ["F401", "F841"]   # legacy win32 scripts — leniency
+"notebooks/**" = ["E402", "F401", "F811"]     # notebook import/layout idioms
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+# ----------------------------------------------------------------------
+# Mypy — type checking. Kept pragmatic: strict on the `neosmart` package
+# itself, lenient on legacy modules and ML libs without stubs.
+# ----------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = false
+warn_unused_configs = true
+warn_unused_ignores = true
+ignore_missing_imports = true
+check_untyped_defs = true
+exclude = [
+    "^SmartParking/legacy/",
+    "^SmartParking/PlateScanner/",
+    "^Training/runs/",
+    "^Validation/reports/",
+    "^notebooks/",
+    "^\\.venv/",
+]
+
+[[tool.mypy.overrides]]
+module = "neosmart.*"
+disallow_untyped_defs = true
+
+# ----------------------------------------------------------------------
+# Pytest.
+# ----------------------------------------------------------------------
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning:pkg_resources.*",
+]
+
+[tool.coverage.run]
+source = ["neosmart"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]

@@ -20,11 +20,14 @@ os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")
 
 import sys
 import time
+import logging
 import warnings
 import cv2
 import numpy as np
 from pathlib import Path
 from collections import Counter
+
+logger = logging.getLogger(__name__)
 
 # parseq (via torch.hub) still imports from timm.models.helpers which triggers
 # a FutureWarning every call. It's benign but clutters startup logs.
@@ -141,20 +144,20 @@ class PlateRecognizer:
             candidates = list(model_dir.glob("*.pt")) if model_dir.exists() else []
             if candidates:
                 plate_model_path = str(candidates[0])
-                print(f"[PlateScanner] Using plate model: {candidates[0].name}")
+                logger.info("Using plate model: %s", candidates[0].name)
             else:
                 ps_models = _PLATE_SCANNER_DIR / "models"
                 candidates = list(ps_models.glob("*.pt")) if ps_models.exists() else []
                 if candidates:
                     plate_model_path = str(candidates[0])
-                    print(f"[PlateScanner] Using model from submodule: {candidates[0].name}")
+                    logger.info("Using model from submodule: %s", candidates[0].name)
                 else:
                     raise FileNotFoundError(
                         f"No plate detection model found. "
                         f"Download from PlateScanner Yandex Disk and place in {model_dir}/"
                     )
         self.plate_detector = YOLO(plate_model_path)
-        print(f"[PlateScanner] PT plate detector loaded: {plate_model_path}")
+        logger.info("PT plate detector loaded: %s", plate_model_path)
 
     def _init_tflite_detector(self, tflite_model_path, base_dir):
         """Load the FP16 TFLite plate detector (edge-deployable demo path).
@@ -177,7 +180,7 @@ class PlateRecognizer:
                     f"Run SmartParking/BarrierSystem/convert_plate_detector_to_tflite.py first."
                 )
             tflite_model_path = str(candidates[0])
-            print(f"[PlateScanner] Using TFLite model: {candidates[0].name}")
+            logger.info("Using TFLite model: %s", candidates[0].name)
 
         self._tflite_interp = tf.lite.Interpreter(
             model_path=tflite_model_path, num_threads=self._tflite_num_threads
@@ -188,9 +191,11 @@ class PlateRecognizer:
         self._tflite_imgsz = int(self._tflite_in["shape"][1])
         # Keep a YOLO-named attribute as None so callers that introspect don't crash.
         self.plate_detector = None
-        print(f"[PlateScanner] TFLite FP16 plate detector loaded: "
-              f"{tflite_model_path} (imgsz={self._tflite_imgsz}, "
-              f"threads={self._tflite_num_threads}, conf_thresh={self.plate_confidence})")
+        logger.info(
+            "TFLite FP16 plate detector loaded: %s (imgsz=%d, threads=%d, conf_thresh=%s)",
+            tflite_model_path, self._tflite_imgsz,
+            self._tflite_num_threads, self.plate_confidence,
+        )
 
     def enhance_frame(self, img_bgr: np.ndarray) -> np.ndarray:
         """Boost brightness + saturation in HSV space.
@@ -225,9 +230,9 @@ class PlateRecognizer:
                 dummy_pil = _Img.new("L", (128, 32))
                 preprocessed = self._preprocess_fn(dummy_pil)
                 self._rec_model("parseq", preprocessed)
-            print(f"[PlateScanner] Warmup complete ({detector_label} + parseq ready)")
-        except Exception as e:
-            print(f"[PlateScanner] Warmup failed (will retry on first call): {e}")
+            logger.info("Warmup complete (%s + parseq ready)", detector_label)
+        except Exception:
+            logger.exception("Warmup failed (will retry on first call)")
 
     def _letterbox(self, img_bgr: np.ndarray, imgsz: int):
         """Resize while preserving aspect ratio, pad with 114-gray to square.
@@ -336,10 +341,9 @@ class PlateRecognizer:
         try:
             self._rec_model = _LocalRecognitionModel()
             self._preprocess_fn = _preprocess_license_plate
-            print("[PlateScanner] ParseQ OCR model loaded (local port)")
-        except Exception as e:
-            print(f"[PlateScanner] Warning: Could not load ParseQ OCR: {e}")
-            print("[PlateScanner] Falling back to detection-only mode")
+            logger.info("ParseQ OCR model loaded (local port)")
+        except Exception:
+            logger.exception("Could not load ParseQ OCR — falling back to detection-only mode")
             self._rec_model = None
             self._preprocess_fn = None
 
@@ -411,8 +415,8 @@ class PlateRecognizer:
                 plate_pil = Image.fromarray(plate_rgb)
                 preprocessed = self._preprocess_fn(plate_pil)
                 plate_text, _ = self._rec_model("parseq", preprocessed)
-            except Exception as e:
-                print(f"[PlateScanner] OCR error: {e}")
+            except Exception:
+                logger.exception("OCR error")
                 plate_text = ""
 
         return {

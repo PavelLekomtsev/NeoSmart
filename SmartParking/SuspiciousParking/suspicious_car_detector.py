@@ -5,10 +5,14 @@ import cv2
 import cvzone
 import numpy as np
 from ultralytics import YOLO
-from sort import Sort
+
+from neosmart.config import get_settings
+from neosmart.tracking.sort import Sort
+
+_settings = get_settings()
 
 cameraId = 4
-model_path = "E:\Work\Computer_Vision\Projects\NeoSmart\Models\Car_Detector.pt"
+model_path = str(_settings.paths.resolve(_settings.paths.car_detector))
 confidence = 0.75
 class_names = ["car"]
 cam_width, cam_height = 1280, 720

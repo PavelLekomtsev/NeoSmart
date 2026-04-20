@@ -1,0 +1,9 @@
+# Local development overrides. Loaded only when
+# NEOSMART_CONFIG_PROFILE=development. Keep empty by default; copy the
+# key(s) you want to change from config/default.yaml and put them here.
+#
+# Example:
+#   detector:
+#     confidence: 0.50
+#   logging:
+#     level: DEBUG

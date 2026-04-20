@@ -6,8 +6,11 @@ SQLite database for license plate whitelist, access logs, and parking sessions.
 import sqlite3
 import json
 import time
+import logging
 from datetime import datetime
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 class BarrierDatabase:
@@ -89,7 +92,7 @@ class BarrierDatabase:
             conn.execute("DELETE FROM parking_sessions")
             conn.execute("DELETE FROM sqlite_sequence WHERE name IN ('access_log', 'parking_sessions')")
             conn.commit()
-            print("[BarrierDB] Runtime stats reset (access_log + parking_sessions cleared)")
+            logger.info("Runtime stats reset (access_log + parking_sessions cleared)")
         finally:
             conn.close()
 
@@ -117,7 +120,7 @@ class BarrierDatabase:
                     pass
 
             conn.commit()
-            print(f"[BarrierDB] Seeded {len(plates)} plates from {seed_file.name}")
+            logger.info("Seeded %d plates from %s", len(plates), seed_file.name)
         finally:
             conn.close()
 
@@ -147,6 +150,7 @@ class BarrierDatabase:
             conn.commit()
             return True
         except sqlite3.Error:
+            logger.exception("Failed to add plate %r", plate)
             return False
         finally:
             conn.close()

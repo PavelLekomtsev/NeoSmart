@@ -1,0 +1,27 @@
+# NeoSmart development / MLOps tooling.
+#
+# Install on top of the core requirements:
+#   pip install -r SmartParking/requirements.txt
+#   pip install -r SmartParking/requirements-dev.txt
+
+# Testing
+pytest==8.3.4
+pytest-cov==6.0.0
+pytest-asyncio==0.24.0
+httpx==0.28.1          # for FastAPI TestClient
+
+# Linting / formatting / typing
+ruff==0.8.4
+mypy==1.13.0
+types-PyYAML==6.0.12.20240917
+
+# Pre-commit hooks
+pre-commit==4.0.1
+nbstripout==0.8.1
+
+# Experiment tracking
+clearml==1.17.1
+
+# Notebooks (for EDA)
+jupyter==1.1.1
+nbconvert==7.16.4
