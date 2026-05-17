@@ -45,9 +45,9 @@
 
 <div align="center">
 
-<video src="https://raw.githubusercontent.com/PavelLekomtsev/NeoSmart/main/Documentation/extras/NeoSmartDemo.mp4" controls muted playsinline width="820">
+<video src="https://github.com/user-attachments/assets/e0e5071d-7cfb-498f-92bb-2bfec66e44cc" controls muted playsinline width="820">
   Your browser does not support inline video.
-  <a href="https://github.com/PavelLekomtsev/NeoSmart/raw/main/Documentation/extras/NeoSmartDemo.mp4">Download the demo</a>.
+  <a href="https://github.com/PavelLekomtsev/NeoSmart/releases/tag/v1.0.0-demo">Download the demo</a>.
 </video>
 
 <sub><i>End-to-end walkthrough - autonomous UE5 city, six synthetic camera feeds, live dashboard, plate-recognition barrier in action. Full-quality HD source available as a <a href="https://github.com/PavelLekomtsev/NeoSmart/releases/tag/v1.0.0-demo">release asset</a>.</i></sub>
