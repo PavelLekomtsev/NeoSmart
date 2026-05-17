@@ -28,6 +28,7 @@
 </p>
 
 <p>
+  <a href="#demo">Demo</a> •
   <a href="#quickstart">Quickstart</a> •
   <a href="#architecture">Architecture</a> •
   <a href="#features">Features</a> •
@@ -35,6 +36,27 @@
   <a href="#quality-mlops">Quality &amp; MLOps</a> •
   <a href="#documentation">Documentation</a>
 </p>
+
+</div>
+
+---
+
+<a id="demo"></a>
+
+<div align="center">
+
+<video src="https://github.com/PavelLekomtsev/NeoSmart/releases/download/v1.0.0-demo/NeoSmartDemo.mp4" controls muted playsinline width="820">
+  Your browser does not support inline video.
+  <a href="https://github.com/PavelLekomtsev/NeoSmart/releases/download/v1.0.0-demo/NeoSmartDemo.mp4">Download the demo</a>.
+</video>
+
+<sub><i>End-to-end walkthrough — autonomous UE5 city, six synthetic camera feeds, live dashboard, plate-recognition barrier in action. Plays inline on GitHub; <a href="https://github.com/PavelLekomtsev/NeoSmart/releases/download/v1.0.0-demo/NeoSmartDemo.mp4">direct download</a> if your viewer skips the video tag.</i></sub>
+
+<br><br>
+
+<a href="Documentation/thesis/Diploma_Lekomtsev_Pavel.pdf">
+  <img alt="Full Thesis (PDF, Russian)" src="https://img.shields.io/badge/📄_Full_Thesis-PDF%20·%20Russian-009688?style=for-the-badge">
+</a>
 
 </div>
 
@@ -327,6 +349,7 @@ NeoSmart/
 <a id="documentation"></a>
 ## 📚 Documentation
 
+- **Thesis** - [Diploma_Lekomtsev_Pavel.pdf](Documentation/thesis/Diploma_Lekomtsev_Pavel.pdf) - the full project writeup (Russian) covering scope, methodology, system design, training pipeline and results in detail.
 - **Cards** - [data card](Documentation/cards/data_card.md) · [model card](Documentation/cards/model_card.md)
 - **Reports** - [experiments](Documentation/reports/experiments_report.md) · [EDA](Documentation/eda/eda_report.md)
 - **Feature guides** - [barrier access control](Documentation/BARRIER_ACCESS_CONTROL.md) · [wrong parking](Documentation/WRONG_PARKING_DETECTION.md) · [suspicious parking](Documentation/SUSPICIOUS_PARKING_DETECTION.md) · [traffic counting](Documentation/TRAFFIC_COUNTING.md) · [zone dashboard](Documentation/ZONE_BASED_DASHBOARD.md) · [parking-space marking](Documentation/PARKING_SPACE_MARKING_TOOL.md)
