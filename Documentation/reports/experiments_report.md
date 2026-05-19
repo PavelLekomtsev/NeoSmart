@@ -63,11 +63,24 @@ Fill this table after each run completes.
 
 Metrics are taken at the best epoch by `mAP50-95(B)` of each run.
 
-| # | Name | Key change | mAP50 | mAP50-95 | P | R | F1@0.5 | Best ep. | ClearML |
-|---|------|------------|-------|----------|---|---|--------|----------|---------|
-| 01 | baseline_yolov8s_100ep | release repro of `Car_Detector.pt` (TrainYolo.py args + defaults) | 0.9945 | **0.9738** | 0.9942 | 0.9920 | 0.9931 | 98 / 100 | [task a14cf011](http://localhost:8080/projects/df3975eb30224f8b9b81af297652c3e7/experiments/a14cf011531b4586bb21ebf071bb220d/output/log) |
-| 02 | aug_schedule           | mosaic+mixup+copy-paste+HSV + cosine LR + warmup + early stop, 150 ep | 0.9946 | 0.9728 | 0.9943 | 0.9866 | 0.9904 | 109 / 129 (EarlyStop) | [task 6459eb76](http://localhost:8080/projects/df3975eb30224f8b9b81af297652c3e7/experiments/6459eb767d9144368696ec9adcf7fa28/output/log) |
-| 03 | full_stack             | AdamW + lower lr0 + label smoothing + weight decay + geometric aug, 100 ep | 0.9946 | 0.9377 | 0.9940 | 0.9866 | 0.9903 | 90 / 100 | [task b8aef48b](http://localhost:8080/projects/df3975eb30224f8b9b81af297652c3e7/experiments/b8aef48b902a4f4c994ffb1ebdcc718a/output/log) |
+| # | Name | Key change | mAP50 | mAP50-95 | P | R | F1@0.5 | Best ep. | ClearML | Artifacts |
+|---|------|------------|-------|----------|---|---|--------|----------|---------|-----------|
+| 01 | baseline_yolov8s_100ep | release repro of `Car_Detector.pt` (TrainYolo.py args + defaults) | 0.9945 | **0.9738** | 0.9942 | 0.9920 | 0.9931 | 98 / 100 | [task a14cf011](http://localhost:8080/projects/df3975eb30224f8b9b81af297652c3e7/experiments/a14cf011531b4586bb21ebf071bb220d/output/log) | [exp01_baseline/](../experiments/exp01_baseline/) |
+| 02 | aug_schedule           | mosaic+mixup+copy-paste+HSV + cosine LR + warmup + early stop, 150 ep | 0.9946 | 0.9728 | 0.9943 | 0.9866 | 0.9904 | 109 / 129 (EarlyStop) | [task 6459eb76](http://localhost:8080/projects/df3975eb30224f8b9b81af297652c3e7/experiments/6459eb767d9144368696ec9adcf7fa28/output/log) | [exp02_aug_schedule/](../experiments/exp02_aug_schedule/) |
+| 03 | full_stack             | AdamW + lower lr0 + label smoothing + weight decay + geometric aug, 100 ep | 0.9946 | 0.9377 | 0.9940 | 0.9866 | 0.9903 | 90 / 100 | [task b8aef48b](http://localhost:8080/projects/df3975eb30224f8b9b81af297652c3e7/experiments/b8aef48b902a4f4c994ffb1ebdcc718a/output/log) | [exp03_full_stack/](../experiments/exp03_full_stack/) |
+
+### Visual artifacts
+
+Per-experiment `results.csv`, PR / F1 / P / R curves, confusion matrices and a
+sample of `val_batch0_pred.jpg` are committed under
+[`Documentation/experiments/`](../experiments/) so the metrics in the table
+above are reproducible without re-running training.
+
+| Run | PR-curve | F1-curve | Confusion matrix | Sample val predictions |
+|---|---|---|---|---|
+| exp/01 baseline      | [PR_curve.png](../experiments/exp01_baseline/PR_curve.png)      | [F1_curve.png](../experiments/exp01_baseline/F1_curve.png)      | [confusion_matrix.png](../experiments/exp01_baseline/confusion_matrix.png)      | [val_batch0_pred.jpg](../experiments/exp01_baseline/val_batch0_pred.jpg)      |
+| exp/02 aug_schedule  | [PR_curve.png](../experiments/exp02_aug_schedule/PR_curve.png)  | [F1_curve.png](../experiments/exp02_aug_schedule/F1_curve.png)  | [confusion_matrix.png](../experiments/exp02_aug_schedule/confusion_matrix.png)  | [val_batch0_pred.jpg](../experiments/exp02_aug_schedule/val_batch0_pred.jpg)  |
+| exp/03 full_stack    | [PR_curve.png](../experiments/exp03_full_stack/PR_curve.png)    | [F1_curve.png](../experiments/exp03_full_stack/F1_curve.png)    | [confusion_matrix.png](../experiments/exp03_full_stack/confusion_matrix.png)    | [val_batch0_pred.jpg](../experiments/exp03_full_stack/val_batch0_pred.jpg)    |
 
 ## Narrative
 
